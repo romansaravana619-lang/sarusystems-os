@@ -11,7 +11,18 @@ from app.crm.schemas import ContactCreate, ContactResponse, CommunicationCreate,
 from app.shared.models import AuditLog, CommunicationActivity, Contact, CRMFollowUp, Opportunity, Prospect, User
 
 router = APIRouter(prefix="/crm", tags=["crm"])
-PROSPECT_TRANSITIONS = {"new": {"contacted", "qualified", "lost", "nurture"}, "contacted": {"qualified", "discovery", "lost", "nurture"}, "qualified": {"discovery", "proposal", "lost", "nurture"}, "discovery": {"proposal", "lost", "nurture"}, "proposal": {"won", "lost", "nurture"}, "won": set(), "lost": {"nurture", "new"}, "nurture": {"new", "contacted", "qualified", "lost"}}
+PROSPECT_TRANSITIONS = {
+    "new": {"contacted", "lost", "on_hold"},
+    "contacted": {"responded", "lost", "on_hold"},
+    "responded": {"discovery_scheduled", "lost", "on_hold"},
+    "discovery_scheduled": {"discovery_completed", "lost", "on_hold"},
+    "discovery_completed": {"proposal_sent", "lost", "on_hold"},
+    "proposal_sent": {"negotiation", "lost", "on_hold"},
+    "negotiation": {"proposal_sent", "won", "lost", "on_hold"},
+    "on_hold": {"contacted", "responded", "discovery_scheduled", "lost"},
+    "won": set(),
+    "lost": {"on_hold"},
+}
 OPPORTUNITY_TRANSITIONS = {"qualification": {"discovery", "lost"}, "discovery": {"requirement_captured", "lost"}, "requirement_captured": {"proposal", "lost"}, "proposal": {"negotiation", "won", "lost"}, "negotiation": {"won", "lost", "proposal"}, "won": set(), "lost": {"qualification"}}
 
 def _validate_owner(db: Session, company_id: UUID, owner_user_id: UUID | None) -> None:
@@ -42,10 +53,10 @@ def crm_dashboard(current_user: User = Depends(require_permission("crm.dashboard
     company_id = current_user.company_id
     prospect_count = int(db.scalar(select(func.count()).select_from(Prospect).where(Prospect.company_id == company_id)) or 0)
     active = int(db.scalar(select(func.count()).select_from(Prospect).where(Prospect.company_id == company_id, Prospect.status.notin_({"won", "lost"}))) or 0)
-    qualified = int(db.scalar(select(func.count()).select_from(Prospect).where(Prospect.company_id == company_id, Prospect.status.in_({"qualified", "discovery", "proposal"}))) or 0)
+    qualified = int(db.scalar(select(func.count()).select_from(Prospect).where(Prospect.company_id == company_id, Prospect.status.in_({"responded", "discovery_scheduled", "discovery_completed", "proposal_sent", "negotiation"}))) or 0)
     outreach_sent = int(db.scalar(select(func.count()).select_from(CommunicationActivity).where(CommunicationActivity.company_id == company_id, CommunicationActivity.direction == "outbound")) or 0)
     replies = int(db.scalar(select(func.count()).select_from(CommunicationActivity).where(CommunicationActivity.company_id == company_id, CommunicationActivity.direction == "inbound")) or 0)
-    positive = int(db.scalar(select(func.count()).select_from(Prospect).where(Prospect.company_id == company_id, Prospect.status.in_({"interested", "qualified", "discovery", "proposal", "won"}))) or 0)
+    positive = int(db.scalar(select(func.count()).select_from(Prospect).where(Prospect.company_id == company_id, Prospect.status.in_({"responded", "discovery_scheduled", "discovery_completed", "proposal_sent", "negotiation", "won"}))) or 0)
     open_followups = int(db.scalar(select(func.count()).select_from(CRMFollowUp).where(CRMFollowUp.company_id == company_id, CRMFollowUp.status == "open")) or 0)
     overdue = int(db.scalar(select(func.count()).select_from(CRMFollowUp).where(CRMFollowUp.company_id == company_id, CRMFollowUp.status == "open", CRMFollowUp.due_at < datetime.now(timezone.utc))) or 0)
     discovery = int(db.scalar(select(func.count()).select_from(Opportunity).where(Opportunity.company_id == company_id, Opportunity.stage == "discovery")) or 0)
@@ -87,7 +98,7 @@ def convert_prospect(prospect_id: UUID, current_user: User = Depends(require_per
     if prospect is None or prospect.company_id != current_user.company_id: raise HTTPException(status_code=404, detail="Prospect not found.")
     existing = db.scalar(select(Contact).where(Contact.prospect_id == prospect.id))
     if existing is not None: return existing
-    if prospect.status not in {"qualified", "discovery", "proposal"}: raise HTTPException(status_code=409, detail="Prospect must be qualified before conversion to a contact.")
+    if prospect.status not in {"responded", "discovery_scheduled", "discovery_completed", "proposal_sent", "negotiation"}: raise HTTPException(status_code=409, detail="Prospect must have progressed beyond response before conversion to a contact.")
     contact = Contact(company_id=prospect.company_id, prospect_id=prospect.id, name=prospect.name, company_name=prospect.company_name, email=prospect.email, phone=prospect.phone, notes=prospect.notes); db.add(contact); db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="prospect.convert", entity_type="Prospect", entity_id=str(prospect.id), details=f"Converted to Contact {contact.id}")); db.commit(); db.refresh(contact); return contact
 
 @router.get("/contacts", response_model=list[ContactResponse])
