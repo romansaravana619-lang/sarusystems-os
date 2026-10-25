@@ -5,8 +5,6 @@ Revises:
 Create Date: 2026-10-25
 """
 
-from collections.abc import Sequence
-
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
