@@ -1,11 +1,12 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export type CompanyProfile = { id: string; company_id: string; legal_name: string | null; tagline: string | null; website: string | null; email: string | null; phone: string | null; address: string | null; industry: string | null; business_model: string | null; vision: string | null; mission: string | null; brand_primary_color: string | null; brand_secondary_color: string | null; logo_url: string | null; is_active: boolean; created_at: string; updated_at: string };
+export type CompanyService = { id: string; code: string; name: string; category: string | null; pricing_model: string; base_price: number | null; currency: string; typical_duration_days: number | null; is_active: boolean };
 export type Department = { id: string; company_id: string; name: string; code: string; description: string | null; owner_user_id: string | null; is_active: boolean; created_at: string; updated_at: string };
 export type Goal = { id: string; company_id: string; title: string; description: string | null; status: string; priority: string; target_date: string | null; owner_user_id: string | null; is_active: boolean; created_at: string; updated_at: string };
 export type Policy = { id: string; company_id: string; title: string; description: string | null; policy_type: string; status: string; version: number; is_active: boolean; created_at: string; updated_at: string };
 export type Rule = { id: string; company_id: string; name: string; description: string | null; rule_type: string; condition: string | null; action: string | null; priority: number; is_enabled: boolean; created_at: string; updated_at: string };
-export type CompanyCoreResponse = { company: { id: string; name: string; code: string; is_active: boolean }; profile: CompanyProfile; departments: Department[]; goals: Goal[]; policies: Policy[]; operating_rules: Rule[] };
+export type CompanyCoreResponse = { company: { id: string; name: string; code: string; is_active: boolean }; profile: CompanyProfile; services: CompanyService[]; departments: Department[]; goals: Goal[]; policies: Policy[]; operating_rules: Rule[] };
 
 async function request<T>(path: string, token: string, init?: RequestInit): Promise<T> { const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } }); if (!response.ok) { const body = await response.json().catch(() => null) as { detail?: string } | null; throw new Error(body?.detail ?? "Request failed."); } return response.json() as Promise<T>; }
 export const getCompanyCore = (token: string) => request<CompanyCoreResponse>("/company", token);
