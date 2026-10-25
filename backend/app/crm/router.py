@@ -7,13 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_permission
 from app.core.database import get_db
-from app.crm.schemas import (
-    COMMUNICATION_CHANNELS,
-    ContactCreate, ContactResponse, CommunicationCreate, CommunicationResponse,
-    FollowUpCreate, FollowUpResponse, FollowUpUpdate, OpportunityCreate, OpportunityResponse,
-    OpportunityUpdate, ProspectCreate, ProspectResponse, ProspectUpdate,
-    OPPORTUNITY_STAGES, PROSPECT_STATUSES, FOLLOW_UP_STATUSES,
-)
+from app.crm.schemas import ContactCreate, ContactResponse, CommunicationCreate, CommunicationResponse, FollowUpCreate, FollowUpResponse, FollowUpUpdate, OpportunityCreate, OpportunityResponse, OpportunityUpdate, ProspectCreate, ProspectResponse, ProspectUpdate, OPPORTUNITY_STAGES, PROSPECT_STATUSES, FOLLOW_UP_STATUSES
 from app.shared.models import AuditLog, CommunicationActivity, Contact, CRMFollowUp, Opportunity, Prospect, User
 
 router = APIRouter(prefix="/crm", tags=["crm"])
@@ -42,7 +36,6 @@ def _validate_record_link(db: Session, company_id: UUID, prospect_id: UUID | Non
         contact = db.get(Contact, contact_id)
         if contact is None or contact.company_id != company_id: raise HTTPException(status_code=400, detail="Contact must belong to the company.")
 
-
 @router.get("/prospects", response_model=list[ProspectResponse])
 def list_prospects(current_user: User = Depends(require_permission("crm.prospects.view")), db: Session = Depends(get_db)) -> list[Prospect]:
     return list(db.scalars(select(Prospect).where(Prospect.company_id == current_user.company_id).order_by(Prospect.lead_score.desc(), Prospect.name)).all())
@@ -50,10 +43,8 @@ def list_prospects(current_user: User = Depends(require_permission("crm.prospect
 @router.post("/prospects", response_model=ProspectResponse, status_code=status.HTTP_201_CREATED)
 def create_prospect(payload: ProspectCreate, current_user: User = Depends(require_permission("crm.prospects.create")), db: Session = Depends(get_db)) -> Prospect:
     _validate_owner(db, current_user.company_id, payload.owner_user_id)
-    prospect = Prospect(company_id=current_user.company_id, **payload.model_dump())
-    db.add(prospect); db.flush()
-    db.add(AuditLog(actor_user_id=current_user.id, action="prospect.create", entity_type="Prospect", entity_id=str(prospect.id)))
-    db.commit(); db.refresh(prospect); return prospect
+    prospect = Prospect(company_id=current_user.company_id, **payload.model_dump()); db.add(prospect); db.flush()
+    db.add(AuditLog(actor_user_id=current_user.id, action="prospect.create", entity_type="Prospect", entity_id=str(prospect.id))); db.commit(); db.refresh(prospect); return prospect
 
 @router.patch("/prospects/{prospect_id}", response_model=ProspectResponse)
 def update_prospect(prospect_id: UUID, payload: ProspectUpdate, current_user: User = Depends(require_permission("crm.prospects.edit")), db: Session = Depends(get_db)) -> Prospect:
@@ -63,8 +54,7 @@ def update_prospect(prospect_id: UUID, payload: ProspectUpdate, current_user: Us
     if "status" in values: _validate_transition(prospect.status, values["status"], PROSPECT_TRANSITIONS, PROSPECT_STATUSES, "prospect status")
     if "owner_user_id" in values: _validate_owner(db, current_user.company_id, values["owner_user_id"])
     for key, value in values.items(): setattr(prospect, key, value)
-    db.add(AuditLog(actor_user_id=current_user.id, action="prospect.update", entity_type="Prospect", entity_id=str(prospect.id)))
-    db.commit(); db.refresh(prospect); return prospect
+    db.add(AuditLog(actor_user_id=current_user.id, action="prospect.update", entity_type="Prospect", entity_id=str(prospect.id))); db.commit(); db.refresh(prospect); return prospect
 
 @router.post("/prospects/{prospect_id}/convert", response_model=ContactResponse)
 def convert_prospect(prospect_id: UUID, current_user: User = Depends(require_permission("crm.prospects.convert")), db: Session = Depends(get_db)) -> Contact:
@@ -73,10 +63,8 @@ def convert_prospect(prospect_id: UUID, current_user: User = Depends(require_per
     existing = db.scalar(select(Contact).where(Contact.prospect_id == prospect.id))
     if existing is not None: return existing
     if prospect.status not in {"qualified", "discovery", "proposal"}: raise HTTPException(status_code=409, detail="Prospect must be qualified before conversion to a contact.")
-    contact = Contact(company_id=prospect.company_id, prospect_id=prospect.id, name=prospect.name, company_name=prospect.company_name, email=prospect.email, phone=prospect.phone, notes=prospect.notes)
-    db.add(contact); db.flush()
-    db.add(AuditLog(actor_user_id=current_user.id, action="prospect.convert", entity_type="Prospect", entity_id=str(prospect.id), details=f"Converted to Contact {contact.id}"))
-    db.commit(); db.refresh(contact); return contact
+    contact = Contact(company_id=prospect.company_id, prospect_id=prospect.id, name=prospect.name, company_name=prospect.company_name, email=prospect.email, phone=prospect.phone, notes=prospect.notes); db.add(contact); db.flush()
+    db.add(AuditLog(actor_user_id=current_user.id, action="prospect.convert", entity_type="Prospect", entity_id=str(prospect.id), details=f"Converted to Contact {contact.id}")); db.commit(); db.refresh(contact); return contact
 
 @router.get("/contacts", response_model=list[ContactResponse])
 def list_contacts(current_user: User = Depends(require_permission("crm.contacts.view")), db: Session = Depends(get_db)) -> list[Contact]:
@@ -84,8 +72,7 @@ def list_contacts(current_user: User = Depends(require_permission("crm.contacts.
 
 @router.post("/contacts", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
 def create_contact(payload: ContactCreate, current_user: User = Depends(require_permission("crm.contacts.create")), db: Session = Depends(get_db)) -> Contact:
-    contact = Contact(company_id=current_user.company_id, **payload.model_dump()); db.add(contact); db.flush()
-    db.add(AuditLog(actor_user_id=current_user.id, action="contact.create", entity_type="Contact", entity_id=str(contact.id))); db.commit(); db.refresh(contact); return contact
+    contact = Contact(company_id=current_user.company_id, **payload.model_dump()); db.add(contact); db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="contact.create", entity_type="Contact", entity_id=str(contact.id))); db.commit(); db.refresh(contact); return contact
 
 @router.get("/opportunities", response_model=list[OpportunityResponse])
 def list_opportunities(current_user: User = Depends(require_permission("crm.opportunities.view")), db: Session = Depends(get_db)) -> list[Opportunity]:
@@ -97,8 +84,7 @@ def create_opportunity(payload: OpportunityCreate, current_user: User = Depends(
     contact = db.get(Contact, payload.contact_id)
     if contact is None or contact.company_id != current_user.company_id: raise HTTPException(status_code=400, detail="Contact must belong to the company.")
     _validate_owner(db, current_user.company_id, payload.owner_user_id)
-    opportunity = Opportunity(company_id=current_user.company_id, **payload.model_dump()); db.add(opportunity); db.flush()
-    db.add(AuditLog(actor_user_id=current_user.id, action="opportunity.create", entity_type="Opportunity", entity_id=str(opportunity.id))); db.commit(); db.refresh(opportunity); return opportunity
+    opportunity = Opportunity(company_id=current_user.company_id, **payload.model_dump()); db.add(opportunity); db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="opportunity.create", entity_type="Opportunity", entity_id=str(opportunity.id))); db.commit(); db.refresh(opportunity); return opportunity
 
 @router.patch("/opportunities/{opportunity_id}", response_model=OpportunityResponse)
 def update_opportunity(opportunity_id: UUID, payload: OpportunityUpdate, current_user: User = Depends(require_permission("crm.opportunities.edit")), db: Session = Depends(get_db)) -> Opportunity:
@@ -120,10 +106,8 @@ def list_prospect_communications(prospect_id: UUID, current_user: User = Depends
 def create_communication(payload: CommunicationCreate, current_user: User = Depends(require_permission("crm.communication.create")), db: Session = Depends(get_db)) -> CommunicationActivity:
     _validate_record_link(db, current_user.company_id, payload.prospect_id, payload.contact_id)
     occurred_at = payload.occurred_at or datetime.now(timezone.utc)
-    activity = CommunicationActivity(company_id=current_user.company_id, actor_user_id=current_user.id, occurred_at=occurred_at, **payload.model_dump(exclude={"occurred_at"}))
-    db.add(activity)
-    if payload.prospect_id:
-        prospect = db.get(Prospect, payload.prospect_id); prospect.last_contact_at = occurred_at
+    activity = CommunicationActivity(company_id=current_user.company_id, actor_user_id=current_user.id, occurred_at=occurred_at, **payload.model_dump(exclude={"occurred_at"})); db.add(activity)
+    if payload.prospect_id: db.get(Prospect, payload.prospect_id).last_contact_at = occurred_at
     db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="crm.communication.create", entity_type="CommunicationActivity", entity_id=str(activity.id))); db.commit(); db.refresh(activity); return activity
 
 @router.get("/follow-ups", response_model=list[FollowUpResponse])
@@ -132,12 +116,11 @@ def list_follow_ups(current_user: User = Depends(require_permission("crm.followu
 
 @router.post("/follow-ups", response_model=FollowUpResponse, status_code=status.HTTP_201_CREATED)
 def create_follow_up(payload: FollowUpCreate, current_user: User = Depends(require_permission("crm.followups.create")), db: Session = Depends(get_db)) -> CRMFollowUp:
-    _validate_record_link(db, current_user.company_id, payload.prospect_id, payload.contact_id)
-    _validate_owner(db, current_user.company_id, payload.owner_user_id)
-    follow_up = CRMFollowUp(company_id=current_user.company_id, **payload.model_dump()); db.add(follow_up); db.flush()
+    _validate_record_link(db, current_user.company_id, payload.prospect_id, payload.contact_id); _validate_owner(db, current_user.company_id, payload.owner_user_id)
+    follow_up = CRMFollowUp(company_id=current_user.company_id, **payload.model_dump()); db.add(follow_up)
     if payload.prospect_id:
         prospect = db.get(Prospect, payload.prospect_id); prospect.next_action = payload.title; prospect.next_action_at = payload.due_at
-    db.add(AuditLog(actor_user_id=current_user.id, action="crm.followup.create", entity_type="CRMFollowUp", entity_id=str(follow_up.id))); db.commit(); db.refresh(follow_up); return follow_up
+    db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="crm.followup.create", entity_type="CRMFollowUp", entity_id=str(follow_up.id))); db.commit(); db.refresh(follow_up); return follow_up
 
 @router.patch("/follow-ups/{follow_up_id}", response_model=FollowUpResponse)
 def update_follow_up(follow_up_id: UUID, payload: FollowUpUpdate, current_user: User = Depends(require_permission("crm.followups.edit")), db: Session = Depends(get_db)) -> CRMFollowUp:
