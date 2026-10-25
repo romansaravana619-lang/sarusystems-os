@@ -7,9 +7,20 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_permission
 from app.company.models import CompanyPolicy, CompanyProfile, Department, Goal, OperatingRule
 from app.company.schemas import (
-    CompanyCoreResponse, CompanyProfileResponse, CompanyProfileUpdate,
-    DepartmentCreate, DepartmentResponse, GoalCreate, GoalResponse, GoalUpdate,
-    PolicyCreate, PolicyResponse, RuleCreate, RuleResponse, RuleUpdate,
+    CompanyCoreResponse,
+    CompanyProfileResponse,
+    CompanyProfileUpdate,
+    DepartmentCreate,
+    DepartmentResponse,
+    GoalCreate,
+    GoalResponse,
+    GoalUpdate,
+    PolicyCreate,
+    PolicyResponse,
+    PolicyUpdate,
+    RuleCreate,
+    RuleResponse,
+    RuleUpdate,
 )
 from app.core.database import get_db
 from app.shared.models import AuditLog, Company, User
@@ -52,9 +63,10 @@ def get_company_core(current_user: User = Depends(require_permission("company.vi
 @router.patch("/profile", response_model=CompanyProfileResponse)
 def update_company_profile(payload: CompanyProfileUpdate, current_user: User = Depends(require_permission("company.edit")), db: Session = Depends(get_db)) -> CompanyProfile:
     profile = _profile(db, current_user.company_id)
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for key, value in changes.items():
         setattr(profile, key, value)
-    db.add(AuditLog(actor_user_id=current_user.id, action="company.profile.update", entity_type="CompanyProfile", entity_id=str(profile.id), details=",".join(payload.model_dump(exclude_unset=True))))
+    db.add(AuditLog(actor_user_id=current_user.id, action="company.profile.update", entity_type="CompanyProfile", entity_id=str(profile.id), details=",".join(changes)))
     db.commit()
     db.refresh(profile)
     return profile
@@ -126,6 +138,22 @@ def create_policy(payload: PolicyCreate, current_user: User = Depends(require_pe
     db.add(item)
     db.flush()
     db.add(AuditLog(actor_user_id=current_user.id, action="company.policy.create", entity_type="CompanyPolicy", entity_id=str(item.id), details=item.title))
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/policies/{policy_id}", response_model=PolicyResponse)
+def update_policy(policy_id: UUID, payload: PolicyUpdate, current_user: User = Depends(require_permission("company.policies.manage")), db: Session = Depends(get_db)) -> CompanyPolicy:
+    item = db.get(CompanyPolicy, policy_id)
+    if item is None or item.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="Policy not found.")
+    changes = payload.model_dump(exclude_unset=True)
+    for key, value in changes.items():
+        setattr(item, key, value)
+    if changes:
+        item.version += 1
+    db.add(AuditLog(actor_user_id=current_user.id, action="company.policy.update", entity_type="CompanyPolicy", entity_id=str(item.id), details=",".join(changes)))
     db.commit()
     db.refresh(item)
     return item
