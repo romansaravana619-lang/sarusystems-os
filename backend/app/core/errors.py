@@ -6,5 +6,8 @@ class DomainError(Exception):
 
 
 class AuthorizationError(HTTPException):
-    def __init__(self, detail: str = "You do not have permission to perform this action.") -> None:
+    def __init__(
+        self,
+        detail: str = "You do not have permission to perform this action.",
+    ) -> None:
         super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
