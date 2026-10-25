@@ -27,6 +27,13 @@ PERMISSIONS = {
     "crm.opportunities.view": "View CRM opportunities",
     "crm.opportunities.create": "Create CRM opportunities",
     "crm.opportunities.edit": "Edit CRM opportunities",
+    "sales.discovery.view": "View opportunity discoveries",
+    "sales.discovery.create": "Create opportunity discoveries",
+    "sales.requirements.view": "View opportunity requirements",
+    "sales.requirements.create": "Create opportunity requirements",
+    "sales.proposals.create": "Create sales proposals",
+    "sales.proposals.edit": "Edit sales proposals",
+    "sales.deal.decide": "Mark sales deals won or lost",
 }
 
 
