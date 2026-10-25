@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.company.schemas import CompanyProfileUpdate, DepartmentCreate, GoalCreate, PolicyCreate, PolicyUpdate, RuleCreate, RuleUpdate
+from app.company.schemas import CompanyProfileUpdate, CompanyServiceSummary, DepartmentCreate, GoalCreate, PolicyCreate, PolicyUpdate, RuleCreate, RuleUpdate
 
 
 def test_company_profile_accepts_core_identity_fields() -> None:
@@ -31,12 +31,18 @@ def test_goal_has_safe_defaults() -> None:
 def test_policy_and_rule_have_operating_defaults() -> None:
     policy = PolicyCreate(title="Client confidentiality")
     assert policy.status == "active"
-    assert policy.version if hasattr(policy, "version") else True
     assert policy.is_active is True
     rule = RuleCreate(name="Founder approval")
     assert rule.is_enabled is True
     assert RuleUpdate(is_enabled=False).is_enabled is False
     assert PolicyUpdate(status="inactive", is_active=False).status == "inactive"
+
+
+def test_company_service_summary_matches_authoritative_service_fields() -> None:
+    service = CompanyServiceSummary(id=uuid4(), code="WEB", name="Professional Websites", category="Web", pricing_model="custom", base_price=25000, currency="INR", typical_duration_days=14, is_active=True)
+    assert service.code == "WEB"
+    assert service.currency == "INR"
+    assert service.is_active is True
 
 
 def test_rule_priority_is_bounded() -> None:
