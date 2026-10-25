@@ -4,7 +4,7 @@ import { getMe, logout, type MeResponse } from "../../services/api";
 import LoginPage from "./LoginPage";
 
 type AuthGateProps = {
-  children: (user: MeResponse, signOut: () => Promise<void>) => ReactNode;
+  children: (user: MeResponse, token: string, signOut: () => Promise<void>) => ReactNode;
 };
 
 const TOKEN_KEY = "saru_access_token";
@@ -43,7 +43,7 @@ function AuthGate({ children }: AuthGateProps) {
   if (!token) return <LoginPage onAuthenticated={handleAuthenticated} />;
   if (checking || !user) return <main className="loading-shell">Authenticating…</main>;
 
-  return <>{children(user, signOut)}</>;
+  return <>{children(user, token, signOut)}</>;
 }
 
 export default AuthGate;
