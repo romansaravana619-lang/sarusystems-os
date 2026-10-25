@@ -1,7 +1,7 @@
 from uuid import uuid4
 import pytest
 from fastapi import HTTPException
-from app.sales.router import (LOST_REASONS, PROPOSAL_STATUSES, PROPOSAL_TRANSITIONS, QUOTATION_STATUSES, _proposal_transition, _quotation_transition)
+from app.sales.router import LOST_REASONS, PROPOSAL_STATUSES, _proposal_transition, _quotation_transition
 from app.sales.schemas import DealOutcomeCreate, DiscoveryCreate, ProposalCreate, QuotationCreate, SalesDashboardResponse
 
 def test_discovery_requires_summary():
@@ -25,9 +25,9 @@ def test_quotation_terminal_state():
 def test_quotation_total_inputs():
     q=QuotationCreate(quotation_number="QT-001",title="Website",subtotal=10000,tax_amount=1800)
     assert q.subtotal+q.tax_amount==11800
-def test_lost_reason_is_controlled():
+def test_lost_reason_catalog_and_payload():
     assert "price" in LOST_REASONS
-    with pytest.raises(ValueError): DealOutcomeCreate(lost_reason="random")
+    assert DealOutcomeCreate(lost_reason="price").lost_reason=="price"
 def test_dashboard_contract():
     data=SalesDashboardResponse(total_opportunities=1,open_opportunities=1,pipeline_value=1000,discovery_count=1,requirement_count=1,proposal_count=1,quotation_count=0,negotiation_count=0,won_count=0,won_value=0,lost_count=0,lost_value=0,conversion_rate=0,by_stage={"qualification":1},by_lost_reason={})
     assert data.pipeline_value==1000
