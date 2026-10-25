@@ -17,18 +17,21 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
-    uuid_type = postgresql.UUID(as_uuid=True)
-    common = [
+def _common_columns(uuid_type: postgresql.UUID) -> list[sa.Column]:
+    return [
         sa.Column("id", uuid_type, primary_key=True, nullable=False),
         sa.Column("company_id", uuid_type, sa.ForeignKey("companies.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     ]
 
+
+def upgrade() -> None:
+    uuid_type = postgresql.UUID(as_uuid=True)
+
     op.create_table(
         "prospects",
-        *common,
+        *_common_columns(uuid_type),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("company_name", sa.String(200)),
         sa.Column("email", sa.String(320)),
@@ -45,7 +48,7 @@ def upgrade() -> None:
 
     op.create_table(
         "contacts",
-        *common,
+        *_common_columns(uuid_type),
         sa.Column("prospect_id", uuid_type, sa.ForeignKey("prospects.id"), unique=True),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("company_name", sa.String(200)),
@@ -59,7 +62,7 @@ def upgrade() -> None:
 
     op.create_table(
         "opportunities",
-        *common,
+        *_common_columns(uuid_type),
         sa.Column("contact_id", uuid_type, sa.ForeignKey("contacts.id"), nullable=False),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("service", sa.String(200)),
