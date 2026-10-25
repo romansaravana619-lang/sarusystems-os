@@ -31,6 +31,12 @@ export type RoleRecord = {
   permission_ids: string[];
 };
 
+export type PermissionRecord = {
+  id: string;
+  code: string;
+  description: string | null;
+};
+
 export type CreateUserPayload = {
   company_id: string;
   email: string;
@@ -89,10 +95,32 @@ export async function listRoles(token: string): Promise<RoleRecord[]> {
   });
 }
 
+export async function listPermissions(token: string): Promise<PermissionRecord[]> {
+  return request<PermissionRecord[]>("/permissions", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function createUser(token: string, payload: CreateUserPayload): Promise<UserRecord> {
   return request<UserRecord>("/users", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
+  });
+}
+
+export async function createRole(token: string, payload: { name: string; description?: string; permission_ids: string[] }): Promise<RoleRecord> {
+  return request<RoleRecord>("/roles", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function replaceRolePermissions(token: string, roleId: string, permissionIds: string[]): Promise<RoleRecord> {
+  return request<RoleRecord>(`/roles/${roleId}/permissions`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(permissionIds),
   });
 }
