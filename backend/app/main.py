@@ -8,6 +8,7 @@ from app.command_center.router import router as command_center_router
 from app.company.router import router as company_router
 from app.core.config import settings
 from app.crm.router import router as crm_router
+from app.projects.router import router as projects_router
 from app.roles.router import router as roles_router
 from app.sales.router import router as sales_router
 from app.services.router import router as services_router
@@ -26,14 +27,11 @@ app.include_router(crm_router)
 app.include_router(sales_router)
 app.include_router(clients_router)
 app.include_router(services_router)
+app.include_router(projects_router)
 app.include_router(tasks_router)
 
-
 @app.get("/health", tags=["system"])
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
+def health() -> dict[str, str]: return {"status": "ok"}
 
 @app.get("/ready", tags=["system"])
-def readiness() -> dict[str, str]:
-    return {"status": "ready"}
+def readiness() -> dict[str, str]: return {"status": "ready"}
