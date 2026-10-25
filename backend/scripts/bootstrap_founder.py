@@ -36,6 +36,10 @@ PERMISSIONS = {
     "sales.proposals.create": "Create sales proposals",
     "sales.proposals.edit": "Edit sales proposals",
     "sales.deal.decide": "Mark sales deals won or lost",
+    "clients.view": "View company clients",
+    "clients.create": "Convert won opportunities into clients",
+    "clients.edit": "Edit clients and client records",
+    "clients.onboarding": "Start client onboarding",
 }
 
 
