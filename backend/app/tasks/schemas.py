@@ -13,6 +13,7 @@ class TaskCreate(BaseModel):
     description: str | None = Field(default=None, max_length=8000)
     status: str = "backlog"
     priority: str = "medium"
+    project_id: UUID | None = None
     owner_user_id: UUID | None = None
     client_id: UUID | None = None
     due_at: datetime | None = None
@@ -24,6 +25,7 @@ class TaskUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=8000)
     status: str | None = None
     priority: str | None = None
+    project_id: UUID | None = None
     owner_user_id: UUID | None = None
     client_id: UUID | None = None
     due_at: datetime | None = None
@@ -35,6 +37,7 @@ class TaskResponse(BaseModel):
 
     id: UUID
     company_id: UUID
+    project_id: UUID | None
     title: str
     description: str | None
     status: str
