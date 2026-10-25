@@ -1,7 +1,15 @@
 import pytest
 from fastapi import HTTPException
 
-from app.projects.router import PROJECT_TRANSITIONS, _requirements_complete, _validate_transition
+from app.projects.router import (
+    DELIVERABLE_TRANSITIONS,
+    MILESTONE_TRANSITIONS,
+    PROJECT_TRANSITIONS,
+    _requirements_complete,
+    _validate_deliverable_transition,
+    _validate_milestone_transition,
+    _validate_transition,
+)
 from app.projects.schemas import ProjectCreate
 from app.tasks.router import _validate_project_context
 
@@ -76,4 +84,36 @@ def test_project_task_handoff_requires_matching_client():
 
     with pytest.raises(HTTPException) as exc:
         _validate_project_context(DB(), "company", "project", None, None, "client-b")
+    assert exc.value.status_code == 409
+
+
+def test_milestone_lifecycle_is_explicit():
+    assert "review" in MILESTONE_TRANSITIONS["in_progress"]
+    assert "completed" in MILESTONE_TRANSITIONS["review"]
+    assert MILESTONE_TRANSITIONS["completed"] == set()
+
+
+def test_milestone_cannot_skip_lifecycle():
+    class Milestone:
+        status = "pending"
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_milestone_transition(Milestone(), "completed")
+    assert exc.value.status_code == 409
+
+
+def test_deliverable_lifecycle_is_explicit():
+    assert "in_review" in DELIVERABLE_TRANSITIONS["submitted"]
+    assert "revision_required" in DELIVERABLE_TRANSITIONS["in_review"]
+    assert "approved" in DELIVERABLE_TRANSITIONS["in_review"]
+    assert DELIVERABLE_TRANSITIONS["approved"] == set()
+
+
+def test_deliverable_approval_requires_final_approval():
+    class Deliverable:
+        status = "in_review"
+        final_approval = False
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_deliverable_transition(Deliverable(), "approved")
     assert exc.value.status_code == 409
