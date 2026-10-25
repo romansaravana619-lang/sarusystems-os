@@ -11,6 +11,12 @@ class UserCreate(BaseModel):
     role_ids: list[UUID] = Field(default_factory=list)
 
 
+class UserUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=200)
+    is_active: bool | None = None
+    role_ids: list[UUID] | None = None
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
