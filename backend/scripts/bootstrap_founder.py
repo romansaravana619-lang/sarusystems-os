@@ -31,6 +31,8 @@ PERMISSIONS = {
     "sales.discovery.create": "Create opportunity discoveries",
     "sales.requirements.view": "View opportunity requirements",
     "sales.requirements.create": "Create opportunity requirements",
+    "sales.requirements.approve": "Approve captured sales requirements",
+    "sales.proposals.view": "View sales proposals",
     "sales.proposals.create": "Create sales proposals",
     "sales.proposals.edit": "Edit sales proposals",
     "sales.deal.decide": "Mark sales deals won or lost",
