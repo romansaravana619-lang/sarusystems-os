@@ -1,0 +1,140 @@
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class CompanyProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    company_id: UUID
+    legal_name: str | None
+    tagline: str | None
+    website: str | None
+    email: str | None
+    phone: str | None
+    address: str | None
+    industry: str | None
+    business_model: str | None
+    vision: str | None
+    mission: str | None
+    brand_primary_color: str | None
+    brand_secondary_color: str | None
+    logo_url: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class CompanyProfileUpdate(BaseModel):
+    legal_name: str | None = Field(default=None, max_length=250)
+    tagline: str | None = Field(default=None, max_length=500)
+    website: str | None = Field(default=None, max_length=500)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=50)
+    address: str | None = None
+    industry: str | None = Field(default=None, max_length=150)
+    business_model: str | None = None
+    vision: str | None = None
+    mission: str | None = None
+    brand_primary_color: str | None = Field(default=None, max_length=30)
+    brand_secondary_color: str | None = Field(default=None, max_length=30)
+    logo_url: str | None = Field(default=None, max_length=1000)
+
+
+class DepartmentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    code: str = Field(min_length=1, max_length=50)
+    description: str | None = None
+    owner_user_id: UUID | None = None
+
+
+class DepartmentResponse(DepartmentCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    company_id: UUID
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class GoalCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=250)
+    description: str | None = None
+    status: str = "active"
+    priority: str = "medium"
+    target_date: str | None = None
+    owner_user_id: UUID | None = None
+
+
+class GoalUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=250)
+    description: str | None = None
+    status: str | None = None
+    priority: str | None = None
+    target_date: str | None = None
+    owner_user_id: UUID | None = None
+    is_active: bool | None = None
+
+
+class GoalResponse(GoalCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    company_id: UUID
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PolicyCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=250)
+    description: str | None = None
+    policy_type: str = "general"
+
+
+class PolicyResponse(PolicyCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    company_id: UUID
+    status: str
+    version: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class RuleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=250)
+    description: str | None = None
+    rule_type: str = "operating"
+    condition: str | None = None
+    action: str | None = None
+    priority: int = Field(default=100, ge=1, le=10000)
+
+
+class RuleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=250)
+    description: str | None = None
+    rule_type: str | None = None
+    condition: str | None = None
+    action: str | None = None
+    priority: int | None = Field(default=None, ge=1, le=10000)
+    is_enabled: bool | None = None
+
+
+class RuleResponse(RuleCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    company_id: UUID
+    is_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class CompanyCoreResponse(BaseModel):
+    company: dict
+    profile: CompanyProfileResponse
+    departments: list[DepartmentResponse]
+    goals: list[GoalResponse]
+    policies: list[PolicyResponse]
+    operating_rules: list[RuleResponse]
