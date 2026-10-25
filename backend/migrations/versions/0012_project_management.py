@@ -1,14 +1,14 @@
-"""Add project management foundation.
+"""Add project management foundation and merge CRM heads.
 
 Revision ID: 0012_project_management
-Revises: 0011_crm_operational_fields
+Revises: 0011_crm_operational_fields, 0011_crm_intelligence
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "0012_project_management"
-down_revision = "0011_crm_operational_fields"
+down_revision = ("0011_crm_operational_fields", "0011_crm_intelligence")
 branch_labels = None
 depends_on = None
 
@@ -28,11 +28,10 @@ def upgrade() -> None:
     permissions = [("projects.view","View projects and project workspaces"),("projects.create","Create projects from won opportunities"),("projects.edit","Edit project records and lifecycle"),("projects.scope.edit","Create and edit project scope"),("projects.scope.approve","Approve project scope"),("projects.requirements.view","View project requirements"),("projects.requirements.create","Create project requirements"),("projects.requirements.approve","Approve project requirements"),("projects.milestones.manage","Manage project milestones"),("projects.deliverables.manage","Manage project deliverables"),("projects.risks.manage","Manage project risks"),("projects.issues.manage","Manage project issues")]
     bind = op.get_bind(); permission_table = sa.table("permissions", sa.column("id", uuid), sa.column("code", sa.String), sa.column("description", sa.String)); role_table = sa.table("roles", sa.column("id", uuid), sa.column("name", sa.String)); role_permission = sa.table("role_permissions", sa.column("role_id", uuid), sa.column("permission_id", uuid))
     import uuid as uuidlib
+    founder_roles = bind.execute(sa.select(role_table.c.id).where(role_table.c.name == "Founder / Super Admin")).all()
     for code, description in permissions:
-        row = bind.execute(sa.select(permission_table.c.id).where(permission_table.c.code == code)).first()
-        permission_id = row[0] if row else uuidlib.uuid4()
+        row = bind.execute(sa.select(permission_table.c.id).where(permission_table.c.code == code)).first(); permission_id = row[0] if row else uuidlib.uuid4()
         if row is None: op.execute(permission_table.insert().values(id=permission_id, code=code, description=description))
-        founder_roles = bind.execute(sa.select(role_table.c.id).where(role_table.c.name == "Founder / Super Admin")).all()
         for role_row in founder_roles:
             exists = bind.execute(sa.select(role_permission.c.role_id).where(role_permission.c.role_id == role_row[0], role_permission.c.permission_id == permission_id)).first()
             if exists is None: op.execute(role_permission.insert().values(role_id=role_row[0], permission_id=permission_id))
