@@ -3,7 +3,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import require_permission
-from app.command_center.schemas import CommandCenterAuditItem, CommandCenterResponse, CommandCenterUserSummary
+from app.command_center.schemas import (
+    CommandCenterAuditItem,
+    CommandCenterResponse,
+    CommandCenterUserSummary,
+)
 from app.core.database import get_db
 from app.shared.models import AuditLog, Permission, Role, User
 
