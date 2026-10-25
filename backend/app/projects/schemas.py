@@ -8,6 +8,7 @@ MILESTONE_STATUSES = {"pending", "in_progress", "completed", "on_hold", "cancell
 DELIVERABLE_STATUSES = {"pending", "submitted", "in_review", "revision_required", "approved", "rejected"}
 RISK_STATUSES = {"open", "mitigated", "closed"}
 ISSUE_STATUSES = {"open", "in_progress", "resolved", "closed"}
+TASK_STATUSES = {"backlog", "to_do", "in_progress", "blocked", "review", "done", "cancelled"}
 
 
 class ProjectCreate(BaseModel):
@@ -57,6 +58,7 @@ class ScopeCreate(BaseModel):
     assumptions: str | None = None
     exclusions: str | None = None
 
+
 class ScopeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -69,10 +71,12 @@ class ScopeResponse(BaseModel):
     approved_by_user_id: UUID | None
     approved_at: datetime | None
 
+
 class RequirementCreate(BaseModel):
     description: str = Field(min_length=1)
     acceptance_criteria: str | None = None
     priority: str = "medium"
+
 
 class RequirementResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -85,11 +89,13 @@ class RequirementResponse(BaseModel):
     approved_by_user_id: UUID | None
     approved_at: datetime | None
 
+
 class MilestoneCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
     due_at: datetime | None = None
     sequence: int = Field(default=1, ge=1)
+
 
 class MilestoneUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -97,6 +103,7 @@ class MilestoneUpdate(BaseModel):
     status: str | None = None
     due_at: datetime | None = None
     sequence: int | None = Field(default=None, ge=1)
+
 
 class MilestoneResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -108,10 +115,12 @@ class MilestoneResponse(BaseModel):
     due_at: datetime | None
     sequence: int
 
+
 class DeliverableCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
     milestone_id: UUID | None = None
+
 
 class DeliverableUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
@@ -119,6 +128,7 @@ class DeliverableUpdate(BaseModel):
     milestone_id: UUID | None = None
     status: str | None = None
     review_notes: str | None = None
+
 
 class DeliverableResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -132,11 +142,13 @@ class DeliverableResponse(BaseModel):
     reviewed_at: datetime | None
     review_notes: str | None
 
+
 class RiskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
     severity: str = "medium"
     mitigation: str | None = None
+
 
 class RiskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
@@ -144,6 +156,7 @@ class RiskUpdate(BaseModel):
     severity: str | None = None
     status: str | None = None
     mitigation: str | None = None
+
 
 class RiskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -155,10 +168,12 @@ class RiskResponse(BaseModel):
     status: str
     mitigation: str | None
 
+
 class IssueCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
     priority: str = "medium"
+
 
 class IssueUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
@@ -166,6 +181,7 @@ class IssueUpdate(BaseModel):
     priority: str | None = None
     status: str | None = None
     resolution: str | None = None
+
 
 class IssueResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -177,15 +193,28 @@ class IssueResponse(BaseModel):
     status: str
     resolution: str | None
 
+
+class ProjectTaskSummary(BaseModel):
+    id: UUID
+    title: str
+    status: str
+    priority: str
+    owner_user_id: UUID | None
+    due_at: datetime | None
+
+
 class ProjectWorkspaceResponse(BaseModel):
     project: ProjectResponse
     scope: ScopeResponse | None
     requirements: list[RequirementResponse]
     milestones: list[MilestoneResponse]
+    tasks: list[ProjectTaskSummary]
     deliverables: list[DeliverableResponse]
     risks: list[RiskResponse]
     issues: list[IssueResponse]
     open_risks: int
     open_issues: int
     pending_requirements: int
+    open_tasks: int
+    completed_tasks: int
     completion_percent: int
