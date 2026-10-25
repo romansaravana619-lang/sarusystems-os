@@ -8,8 +8,13 @@ from app.auth.dependencies import require_permission
 from app.core.database import get_db
 from app.services.models import Service, ServiceDeliverable, ServiceRequirement
 from app.services.schemas import (
-    PRICING_MODELS, ServiceCreate, ServiceDeliverable as _Unused, ServiceItemCreate,
-    ServiceItemResponse, ServiceItemUpdate, ServiceResponse, ServiceUpdate,
+    PRICING_MODELS,
+    ServiceCreate,
+    ServiceItemCreate,
+    ServiceItemResponse,
+    ServiceItemUpdate,
+    ServiceResponse,
+    ServiceUpdate,
 )
 from app.shared.models import AuditLog, User
 
