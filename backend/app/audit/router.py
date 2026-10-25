@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit.schemas import AuditLogResponse
 from app.auth.dependencies import require_permission
 from app.core.database import get_db
 from app.shared.models import AuditLog, User
@@ -9,7 +10,7 @@ from app.shared.models import AuditLog, User
 router = APIRouter(prefix="/audit", tags=["audit"])
 
 
-@router.get("")
+@router.get("", response_model=list[AuditLogResponse])
 def list_audit_logs(
     _: User = Depends(require_permission("audit.view")),
     db: Session = Depends(get_db),
@@ -18,7 +19,7 @@ def list_audit_logs(
     return list(db.scalars(statement).all())
 
 
-@router.get("/{entity_type}/{entity_id}")
+@router.get("/{entity_type}/{entity_id}", response_model=list[AuditLogResponse])
 def entity_audit_history(
     entity_type: str,
     entity_id: str,
