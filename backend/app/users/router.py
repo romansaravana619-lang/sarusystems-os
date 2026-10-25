@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,17 +8,29 @@ from app.auth.dependencies import require_permission
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.shared.models import AuditLog, Company, Role, User
-from app.users.schemas import UserCreate, UserResponse
+from app.users.schemas import UserCreate, UserResponse, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+def _validate_roles(db: Session, role_ids: list[UUID]) -> list[Role]:
+    if not role_ids:
+        return []
+    roles = list(db.scalars(select(Role).where(Role.id.in_(role_ids))).all())
+    if len(roles) != len(set(role_ids)):
+        raise HTTPException(status_code=400, detail="One or more roles do not exist.")
+    if any(not role.is_active for role in roles):
+        raise HTTPException(status_code=400, detail="Inactive roles cannot be assigned.")
+    return roles
+
+
 @router.get("", response_model=list[UserResponse])
 def list_users(
-    _: User = Depends(require_permission("users.view")),
+    current_user: User = Depends(require_permission("users.view")),
     db: Session = Depends(get_db),
 ) -> list[User]:
-    return list(db.scalars(select(User).order_by(User.full_name)).all())
+    statement = select(User).where(User.company_id == current_user.company_id).order_by(User.full_name)
+    return list(db.scalars(statement).all())
 
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -25,7 +39,10 @@ def create_user(
     current_user: User = Depends(require_permission("users.create")),
     db: Session = Depends(get_db),
 ) -> User:
-    company = db.get(Company, payload.company_id)
+    if payload.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You cannot create users outside your company.")
+
+    company = db.get(Company, current_user.company_id)
     if company is None or not company.is_active:
         raise HTTPException(status_code=400, detail="Active company is required.")
 
@@ -33,12 +50,7 @@ def create_user(
     if existing is not None:
         raise HTTPException(status_code=409, detail="A user with this email already exists.")
 
-    roles = list(db.scalars(select(Role).where(Role.id.in_(payload.role_ids))).all())
-    if len(roles) != len(set(payload.role_ids)):
-        raise HTTPException(status_code=400, detail="One or more roles do not exist.")
-    if any(not role.is_active for role in roles):
-        raise HTTPException(status_code=400, detail="Inactive roles cannot be assigned.")
-
+    roles = _validate_roles(db, payload.role_ids)
     user = User(
         company_id=company.id,
         email=payload.email,
@@ -55,6 +67,40 @@ def create_user(
             entity_type="User",
             entity_id=str(user.id),
             details=f"Created user {user.email}",
+        )
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.patch("/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: UUID,
+    payload: UserUpdate,
+    current_user: User = Depends(require_permission("users.edit")),
+    db: Session = Depends(get_db),
+) -> User:
+    user = db.get(User, user_id)
+    if user is None or user.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if payload.full_name is not None:
+        user.full_name = payload.full_name
+    if payload.is_active is not None:
+        if user.id == current_user.id and not payload.is_active:
+            raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
+        user.is_active = payload.is_active
+    if payload.role_ids is not None:
+        user.roles = _validate_roles(db, payload.role_ids)
+
+    db.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="user.update",
+            entity_type="User",
+            entity_id=str(user.id),
+            details="Updated user profile, status, or role assignments",
         )
     )
     db.commit()
