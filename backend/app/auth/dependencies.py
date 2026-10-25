@@ -1,4 +1,3 @@
-from collections.abc import Generator
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
@@ -8,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.tokens import decode_access_token
 from app.core.database import get_db
-from app.shared.models import User
+from app.shared.models import Role, User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -35,7 +34,7 @@ def get_current_user(
 
     statement = (
         select(User)
-        .options(selectinload(User.roles).selectinload("permissions"))
+        .options(selectinload(User.roles).selectinload(Role.permissions))
         .where(User.id == user_id, User.is_active.is_(True))
     )
     user = db.scalar(statement)
