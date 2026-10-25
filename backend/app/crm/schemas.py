@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-PROSPECT_STATUSES = {"new", "contacted", "qualified", "discovery", "proposal", "won", "lost", "nurture"}
+PROSPECT_STATUSES = {"new", "contacted", "responded", "discovery_scheduled", "discovery_completed", "proposal_sent", "negotiation", "won", "lost", "on_hold"}
 OPPORTUNITY_STAGES = {"qualification", "discovery", "requirement_captured", "proposal", "negotiation", "won", "lost"}
 QUALIFICATION_LEVELS = {"COLD", "WARM", "HOT"}
 FOLLOW_UP_STATUSES = {"open", "completed", "cancelled"}
@@ -32,12 +32,19 @@ class ProspectCreate(BaseModel):
     follow_up_count: int = Field(default=0, ge=0)
     next_action: str | None = Field(default=None, max_length=500)
     next_action_at: datetime | None = None
+    status: str = "new"
 
     @field_validator("qualification_level")
     @classmethod
     def validate_qualification(cls, value: str) -> str:
         value = value.upper()
         if value not in QUALIFICATION_LEVELS: raise ValueError("Invalid qualification level.")
+        return value
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        if value not in PROSPECT_STATUSES: raise ValueError("Invalid prospect status.")
         return value
 
 class ProspectUpdate(BaseModel):
@@ -65,6 +72,12 @@ class ProspectUpdate(BaseModel):
     follow_up_count: int | None = Field(default=None, ge=0)
     next_action: str | None = Field(default=None, max_length=500)
     next_action_at: datetime | None = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        if value is not None and value not in PROSPECT_STATUSES: raise ValueError("Invalid prospect status.")
+        return value
 
     @field_validator("qualification_level")
     @classmethod
@@ -107,23 +120,5 @@ class FollowUpUpdate(BaseModel):
 class FollowUpResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID; company_id: UUID; prospect_id: UUID | None; contact_id: UUID | None; owner_user_id: UUID; title: str; due_at: datetime; status: str; notes: str | None; completed_at: datetime | None; created_at: datetime; updated_at: datetime
-
 class CRMDashboardResponse(BaseModel):
-    total_prospects: int
-    active_prospects: int
-    qualified_leads: int
-    outreach_sent: int
-    replies: int
-    positive_replies: int
-    follow_ups_open: int
-    follow_ups_overdue: int
-    discovery_calls: int
-    proposals: int
-    negotiations: int
-    won_opportunities: int
-    pipeline_value: float
-    won_value: float
-    by_prospect_status: dict[str, int]
-    by_source: dict[str, int]
-    by_outreach_channel: dict[str, int]
-    by_opportunity_stage: dict[str, int]
+    total_prospects: int; active_prospects: int; qualified_leads: int; outreach_sent: int; replies: int; positive_replies: int; follow_ups_open: int; follow_ups_overdue: int; discovery_calls: int; proposals: int; negotiations: int; won_opportunities: int; pipeline_value: float; won_value: float; by_prospect_status: dict[str, int]; by_source: dict[str, int]; by_outreach_channel: dict[str, int]; by_opportunity_stage: dict[str, int]
