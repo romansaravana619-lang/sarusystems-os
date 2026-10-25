@@ -8,6 +8,12 @@ from app.shared.models import Company, Permission, Role, User
 
 PERMISSIONS = {
     "command_center.view": "View the Founder Command Center",
+    "company.view": "View company core",
+    "company.edit": "Edit company profile and brand information",
+    "company.departments.manage": "Manage company departments",
+    "company.goals.manage": "Manage company goals",
+    "company.policies.manage": "Manage company policies",
+    "company.rules.manage": "Manage operating rules",
     "users.view": "View company users",
     "users.create": "Create company users",
     "users.edit": "Edit company users",
