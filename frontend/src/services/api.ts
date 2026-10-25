@@ -15,6 +15,30 @@ type TokenResponse = {
   token_type: string;
 };
 
+export type UserRecord = {
+  id: string;
+  company_id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+};
+
+export type RoleRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  permission_ids: string[];
+};
+
+export type CreateUserPayload = {
+  company_id: string;
+  email: string;
+  full_name: string;
+  password: string;
+  role_ids: string[];
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -50,5 +74,25 @@ export async function logout(token: string): Promise<void> {
   await request<void>("/auth/logout", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function listUsers(token: string): Promise<UserRecord[]> {
+  return request<UserRecord[]>("/users", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function listRoles(token: string): Promise<RoleRecord[]> {
+  return request<RoleRecord[]>("/roles", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function createUser(token: string, payload: CreateUserPayload): Promise<UserRecord> {
+  return request<UserRecord>("/users", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
   });
 }
