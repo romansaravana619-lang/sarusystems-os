@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.audit.router import router as audit_router
 from app.auth.router import router as auth_router
+from app.clients.router import router as clients_router
 from app.command_center.router import router as command_center_router
 from app.core.config import settings
 from app.crm.router import router as crm_router
@@ -32,6 +33,7 @@ app.include_router(audit_router)
 app.include_router(command_center_router)
 app.include_router(crm_router)
 app.include_router(sales_router)
+app.include_router(clients_router)
 
 
 @app.get("/health", tags=["system"])
