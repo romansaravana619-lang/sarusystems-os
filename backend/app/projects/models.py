@@ -56,9 +56,13 @@ class Milestone(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    objective: Mapped[str | None] = mapped_column(Text)
+    acceptance_criteria: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending", index=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     sequence: Mapped[int] = mapped_column(nullable=False, default=1)
+    founder_review: Mapped[str | None] = mapped_column(Text)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Deliverable(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -66,9 +70,14 @@ class Deliverable(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     milestone_id: Mapped[UUID | None] = mapped_column(ForeignKey("project_milestones.id", ondelete="SET NULL"), index=True)
+    task_id: Mapped[UUID | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    acceptance_criteria: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending", index=True)
+    revision_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    final_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    final_file_or_repository: Mapped[str | None] = mapped_column(Text)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_notes: Mapped[str | None] = mapped_column(Text)
