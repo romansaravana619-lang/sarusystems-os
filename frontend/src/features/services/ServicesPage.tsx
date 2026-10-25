@@ -1,0 +1,28 @@
+import { FormEvent, useEffect, useState } from "react";
+import { createService, createServiceDeliverable, createServiceRequirement, listServiceDeliverables, listServiceRequirements, listServices, ServiceItem, ServiceRecord } from "../../services/servicesApi";
+
+type Props = { token: string };
+
+export default function ServicesPage({ token }: Props) {
+  const [services, setServices] = useState<ServiceRecord[]>([]);
+  const [selected, setSelected] = useState<ServiceRecord | null>(null);
+  const [requirements, setRequirements] = useState<ServiceItem[]>([]);
+  const [deliverables, setDeliverables] = useState<ServiceItem[]>([]);
+  const [name, setName] = useState(""); const [code, setCode] = useState(""); const [pricing, setPricing] = useState("custom");
+  const [message, setMessage] = useState("");
+
+  const load = async () => setServices(await listServices(token));
+  useEffect(() => { void load(); }, []);
+  const selectService = async (service: ServiceRecord) => { setSelected(service); setRequirements(await listServiceRequirements(token, service.id)); setDeliverables(await listServiceDeliverables(token, service.id)); };
+  const submit = async (event: FormEvent) => { event.preventDefault(); setMessage(""); try { const service = await createService(token, { name, code: code.toUpperCase(), pricing_model: pricing }); setName(""); setCode(""); await load(); await selectService(service); setMessage("Service created."); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create service."); } };
+  const addItem = async (kind: "requirement" | "deliverable") => { if (!selected) return; const title = window.prompt(`New ${kind} name`); if (!title) return; if (kind === "requirement") await createServiceRequirement(token, selected.id, { name: title }); else await createServiceDeliverable(token, selected.id, { name: title }); await selectService(selected); };
+
+  return <section className="module-panel">
+    <div className="module-heading"><div><p className="eyebrow">SERVICE MANAGEMENT</p><h2>Service Catalog</h2><p>Define what Saru Systems sells, how it is delivered, what it requires and what it produces.</p></div><span className="status-pill">{services.length} services</span></div>
+    <form className="inline-form" onSubmit={submit}><input value={code} onChange={e => setCode(e.target.value)} placeholder="Code" required /><input value={name} onChange={e => setName(e.target.value)} placeholder="Service name" required /><select value={pricing} onChange={e => setPricing(e.target.value)}><option value="custom">Custom</option><option value="fixed">Fixed</option><option value="hourly">Hourly</option><option value="monthly">Monthly</option></select><button className="primary-button" type="submit">Add Service</button></form>
+    {message && <p className="muted-text">{message}</p>}
+    <div className="workspace-grid"><div className="record-list">{services.map(service => <button className={`record-row ${selected?.id === service.id ? "selected" : ""}`} key={service.id} onClick={() => void selectService(service)}><strong>{service.name}</strong><span>{service.code} · {service.pricing_model}</span></button>)}{services.length === 0 && <p className="muted-text">No services configured yet.</p>}</div>
+      {selected ? <article className="detail-panel"><div className="detail-header"><div><p className="eyebrow">{selected.code}</p><h3>{selected.name}</h3></div><span className="status-pill">{selected.is_active ? "Active" : "Inactive"}</span></div><div className="stats-grid"><div><span>Pricing</span><strong>{selected.pricing_model}</strong></div><div><span>Base price</span><strong>{selected.base_price ?? "Custom"} {selected.base_price ? selected.currency : ""}</strong></div><div><span>Typical timeline</span><strong>{selected.typical_duration_days ? `${selected.typical_duration_days} days` : "Not set"}</strong></div></div><div className="detail-section"><div className="section-title"><h4>Requirements</h4><button className="secondary-button" onClick={() => void addItem("requirement")}>Add</button></div>{requirements.map(item => <div className="mini-row" key={item.id}>{item.name}<span>{item.is_mandatory ? "Required" : "Optional"}</span></div>)}</div><div className="detail-section"><div className="section-title"><h4>Deliverables</h4><button className="secondary-button" onClick={() => void addItem("deliverable")}>Add</button></div>{deliverables.map(item => <div className="mini-row" key={item.id}>{item.name}<span>{item.is_mandatory ? "Required" : "Optional"}</span></div>)}</div></article> : <article className="detail-panel empty-state"><h3>Select a service</h3><p>Service details, requirements and deliverables will appear here.</p></article>}
+    </div>
+  </section>;
+}
