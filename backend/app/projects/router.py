@@ -17,6 +17,7 @@ from app.projects.schemas import (
     ScopeCreate, ScopeResponse,
 )
 from app.shared.models import AuditLog, Opportunity, User
+from app.tasks.models import Task
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -28,6 +29,25 @@ PROJECT_TRANSITIONS = {
     "review": {"delivery", "testing", "on_hold", "cancelled"},
     "delivery": {"completed", "review", "on_hold"},
     "completed": set(), "on_hold": {"requirements_pending", "ready", "development", "cancelled"}, "cancelled": set(),
+}
+MILESTONE_TRANSITIONS = {
+    "pending": {"active", "in_progress", "on_hold", "cancelled"},
+    "planned": {"active", "in_progress", "on_hold", "cancelled"},
+    "active": {"in_progress", "review", "delayed", "on_hold", "cancelled"},
+    "in_progress": {"review", "delayed", "on_hold", "cancelled"},
+    "review": {"completed", "in_progress", "delayed", "on_hold"},
+    "delayed": {"active", "in_progress", "review", "on_hold", "cancelled"},
+    "on_hold": {"active", "in_progress", "cancelled"},
+    "completed": set(), "cancelled": set(),
+}
+DELIVERABLE_TRANSITIONS = {
+    "pending": {"not_submitted", "submitted", "rejected"},
+    "not_submitted": {"submitted", "rejected"},
+    "submitted": {"in_review", "revision_required", "approved", "rejected"},
+    "in_review": {"revision_required", "approved", "rejected"},
+    "revision_required": {"submitted", "in_review", "rejected"},
+    "rejected": {"revision_required", "submitted"},
+    "approved": set(),
 }
 
 
@@ -69,8 +89,25 @@ def _validate_transition(db: Session, project: Project, target: str) -> None:
     if target == "completed":
         open_deliverables = db.scalar(select(func.count(Deliverable.id)).where(Deliverable.project_id == project.id, Deliverable.status != "approved")) or 0
         open_milestones = db.scalar(select(func.count(Milestone.id)).where(Milestone.project_id == project.id, Milestone.status.not_in(["completed", "cancelled"]))) or 0
-        if open_deliverables or open_milestones:
-            raise HTTPException(status_code=409, detail="All deliverables must be approved and milestones completed before project completion.")
+        open_tasks = db.scalar(select(func.count(Task.id)).where(Task.project_id == project.id, Task.status.not_in(["completed", "cancelled", "done"]))) or 0
+        if open_deliverables or open_milestones or open_tasks:
+            raise HTTPException(status_code=409, detail="All required tasks, deliverables and milestones must be completed before project completion.")
+
+
+def _validate_milestone_transition(milestone: Milestone, target: str) -> None:
+    if target not in MILESTONE_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid milestone status.")
+    if target != milestone.status and target not in MILESTONE_TRANSITIONS.get(milestone.status, set()):
+        raise HTTPException(status_code=409, detail=f"Invalid milestone status transition: {milestone.status} -> {target}.")
+
+
+def _validate_deliverable_transition(deliverable: Deliverable, target: str) -> None:
+    if target not in DELIVERABLE_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid deliverable status.")
+    if target != deliverable.status and target not in DELIVERABLE_TRANSITIONS.get(deliverable.status, set()):
+        raise HTTPException(status_code=409, detail=f"Invalid deliverable status transition: {deliverable.status} -> {target}.")
+    if target == "approved" and not deliverable.final_approval:
+        raise HTTPException(status_code=409, detail="Final approval must be explicitly recorded before a deliverable is approved.")
 
 
 @router.get("", response_model=list[ProjectResponse])
@@ -173,7 +210,7 @@ def list_milestones(project_id: UUID, current_user: User = Depends(require_permi
 @router.post("/{project_id}/milestones", response_model=MilestoneResponse, status_code=status.HTTP_201_CREATED)
 def create_milestone(project_id: UUID, payload: MilestoneCreate, current_user: User = Depends(require_permission("projects.milestones.manage")), db: Session = Depends(get_db)) -> Milestone:
     _project(db, current_user.company_id, project_id)
-    milestone = Milestone(project_id=project_id, **payload.model_dump()); db.add(milestone); db.flush(); _audit(db, current_user, "project.milestone.create", "Milestone", milestone.id)
+    milestone = Milestone(project_id=project_id, status="planned", **payload.model_dump()); db.add(milestone); db.flush(); _audit(db, current_user, "project.milestone.create", "Milestone", milestone.id)
     db.commit(); db.refresh(milestone); return milestone
 
 
@@ -183,7 +220,16 @@ def update_milestone(milestone_id: UUID, payload: MilestoneUpdate, current_user:
     if milestone is None: raise HTTPException(status_code=404, detail="Milestone not found.")
     _project(db, current_user.company_id, milestone.project_id)
     values = payload.model_dump(exclude_unset=True)
-    if "status" in values and values["status"] not in MILESTONE_STATUSES: raise HTTPException(status_code=400, detail="Invalid milestone status.")
+    target = values.get("status", milestone.status)
+    _validate_milestone_transition(milestone, target)
+    if target == "completed":
+        open_tasks = db.scalar(select(func.count(Task.id)).where(Task.milestone_id == milestone.id, Task.status.not_in(["completed", "cancelled", "done"]))) or 0
+        open_deliverables = db.scalar(select(func.count(Deliverable.id)).where(Deliverable.milestone_id == milestone.id, Deliverable.status != "approved")) or 0
+        if open_tasks or open_deliverables:
+            raise HTTPException(status_code=409, detail="Milestone requires all linked tasks completed and deliverables approved before completion.")
+        milestone.completed_at = datetime.now(timezone.utc)
+    elif "status" in values:
+        milestone.completed_at = None
     for key, value in values.items(): setattr(milestone, key, value)
     _audit(db, current_user, "project.milestone.update", "Milestone", milestone.id)
     db.commit(); db.refresh(milestone); return milestone
@@ -199,6 +245,9 @@ def list_deliverables(project_id: UUID, current_user: User = Depends(require_per
 def create_deliverable(project_id: UUID, payload: DeliverableCreate, current_user: User = Depends(require_permission("projects.deliverables.manage")), db: Session = Depends(get_db)) -> Deliverable:
     _project(db, current_user.company_id, project_id)
     if payload.milestone_id and db.scalar(select(Milestone.id).where(Milestone.id == payload.milestone_id, Milestone.project_id == project_id)) is None: raise HTTPException(status_code=400, detail="Milestone does not belong to this project.")
+    if payload.task_id:
+        task = db.get(Task, payload.task_id)
+        if task is None or task.company_id != current_user.company_id or task.project_id != project_id: raise HTTPException(status_code=400, detail="Deliverable task must belong to this project.")
     deliverable = Deliverable(project_id=project_id, **payload.model_dump()); db.add(deliverable); db.flush(); _audit(db, current_user, "project.deliverable.create", "Deliverable", deliverable.id)
     db.commit(); db.refresh(deliverable); return deliverable
 
@@ -209,10 +258,30 @@ def update_deliverable(deliverable_id: UUID, payload: DeliverableUpdate, current
     if deliverable is None: raise HTTPException(status_code=404, detail="Deliverable not found.")
     _project(db, current_user.company_id, deliverable.project_id)
     values = payload.model_dump(exclude_unset=True)
-    if "status" in values and values["status"] not in DELIVERABLE_STATUSES: raise HTTPException(status_code=400, detail="Invalid deliverable status.")
-    if "milestone_id" in values and values["milestone_id"] and db.scalar(select(Milestone.id).where(Milestone.id == values["milestone_id"], Milestone.project_id == deliverable.project_id)) is None: raise HTTPException(status_code=400, detail="Milestone does not belong to this project.")
-    if values.get("status") == "submitted": deliverable.submitted_at = datetime.now(timezone.utc)
-    if values.get("status") in {"in_review", "approved", "rejected", "revision_required"}: deliverable.reviewed_at = datetime.now(timezone.utc)
+    target = values.get("status", deliverable.status)
+    if target == "not_submitted" and deliverable.status == "pending":
+        pass
+    _validate_deliverable_transition(deliverable, target)
+    milestone_id = values.get("milestone_id", deliverable.milestone_id)
+    if milestone_id and db.scalar(select(Milestone.id).where(Milestone.id == milestone_id, Milestone.project_id == deliverable.project_id)) is None: raise HTTPException(status_code=400, detail="Milestone does not belong to this project.")
+    if "task_id" in values and values["task_id"]:
+        task = db.get(Task, values["task_id"])
+        if task is None or task.company_id != current_user.company_id or task.project_id != deliverable.project_id: raise HTTPException(status_code=400, detail="Deliverable task must belong to this project.")
+    if target in {"submitted", "in_review", "approved", "rejected", "revision_required"} and not deliverable.acceptance_criteria and not values.get("acceptance_criteria"):
+        raise HTTPException(status_code=409, detail="Deliverable acceptance criteria must be defined before review.")
+    if target == "submitted":
+        deliverable.submitted_at = datetime.now(timezone.utc)
+        deliverable.revision_required = False
+    if target in {"in_review", "approved", "rejected", "revision_required"}:
+        deliverable.reviewed_at = datetime.now(timezone.utc)
+    if target == "revision_required":
+        deliverable.revision_required = True
+        deliverable.final_approval = False
+    if target == "approved":
+        deliverable.final_approval = True
+        deliverable.revision_required = False
+    if "final_approval" in values and values["final_approval"] is False and target == "approved":
+        raise HTTPException(status_code=409, detail="Approved deliverables require final approval.")
     for key, value in values.items(): setattr(deliverable, key, value)
     _audit(db, current_user, "project.deliverable.update", "Deliverable", deliverable.id)
     db.commit(); db.refresh(deliverable); return deliverable
@@ -254,6 +323,7 @@ def workspace(project_id: UUID, current_user: User = Depends(require_permission(
     scope = db.scalar(select(ProjectScope).where(ProjectScope.project_id == project.id))
     requirements = list(db.scalars(select(ProjectRequirement).where(ProjectRequirement.project_id == project.id).order_by(ProjectRequirement.created_at)).all())
     milestones = list(db.scalars(select(Milestone).where(Milestone.project_id == project.id).order_by(Milestone.sequence)).all())
+    tasks = list(db.scalars(select(Task).where(Task.project_id == project.id).order_by(Task.due_at.is_(None), Task.due_at, Task.created_at.desc())).all())
     deliverables = list(db.scalars(select(Deliverable).where(Deliverable.project_id == project.id).order_by(Deliverable.created_at)).all())
     risks = list(db.scalars(select(ProjectRisk).where(ProjectRisk.project_id == project.id).order_by(ProjectRisk.created_at.desc())).all())
     issues = list(db.scalars(select(ProjectIssue).where(ProjectIssue.project_id == project.id).order_by(ProjectIssue.created_at.desc())).all())
@@ -263,4 +333,6 @@ def workspace(project_id: UUID, current_user: User = Depends(require_permission(
     total = len(milestones) + len(deliverables)
     completed = sum(1 for m in milestones if m.status == "completed") + sum(1 for d in deliverables if d.status == "approved")
     percent = round(completed * 100 / total) if total else 0
-    return ProjectWorkspaceResponse(project=project, scope=scope, requirements=requirements, milestones=milestones, deliverables=deliverables, risks=risks, issues=issues, open_risks=open_risks, open_issues=open_issues, pending_requirements=pending, completion_percent=percent)
+    open_tasks = sum(1 for task in tasks if task.status not in {"completed", "cancelled", "done"})
+    completed_tasks = sum(1 for task in tasks if task.status in {"completed", "done"})
+    return ProjectWorkspaceResponse(project=project, scope=scope, requirements=requirements, milestones=milestones, tasks=tasks, deliverables=deliverables, risks=risks, issues=issues, open_risks=open_risks, open_issues=open_issues, pending_requirements=pending, open_tasks=open_tasks, completed_tasks=completed_tasks, completion_percent=percent)
