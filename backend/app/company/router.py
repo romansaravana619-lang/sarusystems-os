@@ -7,22 +7,12 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_permission
 from app.company.models import CompanyPolicy, CompanyProfile, Department, Goal, OperatingRule
 from app.company.schemas import (
-    CompanyCoreResponse,
-    CompanyProfileResponse,
-    CompanyProfileUpdate,
-    DepartmentCreate,
-    DepartmentResponse,
-    GoalCreate,
-    GoalResponse,
-    GoalUpdate,
-    PolicyCreate,
-    PolicyResponse,
-    PolicyUpdate,
-    RuleCreate,
-    RuleResponse,
-    RuleUpdate,
+    CompanyCoreResponse, CompanyProfileResponse, CompanyProfileUpdate, CompanyServiceSummary,
+    DepartmentCreate, DepartmentResponse, GoalCreate, GoalResponse, GoalUpdate,
+    PolicyCreate, PolicyResponse, PolicyUpdate, RuleCreate, RuleResponse, RuleUpdate,
 )
 from app.core.database import get_db
+from app.services.models import Service
 from app.shared.models import AuditLog, Company, User
 
 router = APIRouter(prefix="/company", tags=["company"])
@@ -50,9 +40,11 @@ def get_company_core(current_user: User = Depends(require_permission("company.vi
     company = db.get(Company, current_user.company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found.")
+    services = db.scalars(select(Service).where(Service.company_id == company.id).order_by(Service.name)).all()
     return CompanyCoreResponse(
         company={"id": company.id, "name": company.name, "code": company.code, "is_active": company.is_active},
         profile=_profile(db, company.id),
+        services=[CompanyServiceSummary.model_validate(item, from_attributes=True) for item in services],
         departments=list(db.scalars(select(Department).where(Department.company_id == company.id).order_by(Department.name)).all()),
         goals=list(db.scalars(select(Goal).where(Goal.company_id == company.id).order_by(Goal.priority, Goal.title)).all()),
         policies=list(db.scalars(select(CompanyPolicy).where(CompanyPolicy.company_id == company.id).order_by(CompanyPolicy.title)).all()),
