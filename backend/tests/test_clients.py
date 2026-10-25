@@ -10,8 +10,11 @@ from app.clients.schemas import (
     HEALTH_STATUSES,
     ONBOARDING_ITEM_STATUSES,
     AgreementCreate,
+    ClientContactCreate,
     ClientCreate,
+    ClientDocumentCreate,
     ClientHealthUpdate,
+    ClientRelationCreate,
     ClientUpdate,
     OnboardingItemCreate,
     OnboardingItemUpdate,
@@ -72,10 +75,19 @@ def test_client_ecosystem_vocabularies_are_explicit() -> None:
     assert CLIENT_RELATION_TYPES == {"project", "payment", "communication", "support"}
 
 
-def test_health_payload_is_bounded() -> None:
+def test_client_health_payload_is_bounded() -> None:
     assert ClientHealthUpdate(health_status="healthy", health_score=100).health_score == 100
     with pytest.raises(ValueError):
         ClientHealthUpdate(health_status="healthy", health_score=101)
+
+
+def test_client_workspace_payloads_validate() -> None:
+    contact = ClientContactCreate(name="Owner", is_primary=True)
+    document = ClientDocumentCreate(title="Signed agreement", document_type="agreement")
+    relation = ClientRelationCreate(relation_type="communication", related_entity_id=uuid4(), label="WhatsApp")
+    assert contact.is_primary is True
+    assert document.status == "active"
+    assert relation.relation_type == "communication"
 
 
 def test_onboarding_item_defaults_to_required_pending() -> None:
