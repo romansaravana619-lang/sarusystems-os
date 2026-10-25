@@ -10,10 +10,22 @@ export type CommandCenterResponse = { user: { id: string; full_name: string; ema
 export type ProspectRecord = { id: string; company_id: string; name: string; company_name: string | null; email: string | null; phone: string | null; source: string | null; status: string; owner_user_id: string | null; notes: string | null; created_at: string; updated_at: string };
 export type ContactRecord = { id: string; company_id: string; prospect_id: string | null; name: string; company_name: string | null; email: string | null; phone: string | null; notes: string | null; created_at: string; updated_at: string };
 export type OpportunityRecord = { id: string; company_id: string; contact_id: string; name: string; service: string | null; stage: string; estimated_value: number | null; owner_user_id: string | null; notes: string | null; created_at: string; updated_at: string };
+export type ClientRecord = { id: string; company_id: string; opportunity_id: string; source_contact_id: string; code: string; name: string; company_name: string | null; email: string | null; phone: string | null; status: string; owner_user_id: string | null; notes: string | null; onboarding_started_at: string | null; created_at: string; updated_at: string };
+export type ClientContactRecord = { id: string; client_id: string; name: string; email: string | null; phone: string | null; role: string | null; notes: string | null; created_at: string; updated_at: string };
+export type AgreementRecord = { id: string; client_id: string; title: string; status: string; document_id: string | null; notes: string | null; created_at: string; updated_at: string };
 export type CreateUserPayload = { company_id: string; email: string; full_name: string; password: string; role_ids: string[] };
 type RolePermissionsResponse = { role_id: string; permission_ids: string[] };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> { const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } }); if (!response.ok) { const body = (await response.json().catch(() => null)) as { detail?: string } | null; throw new Error(body?.detail ?? "Request failed."); } if (response.status === 204) return undefined as T; return (await response.json()) as T; }
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string; error?: { message?: string } } | null;
+    throw new Error(body?.detail ?? body?.error?.message ?? "Request failed.");
+  }
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
 export async function login(email: string, password: string): Promise<TokenResponse> { return request<TokenResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }); }
 export async function getMe(token: string): Promise<MeResponse> { return request<MeResponse>("/auth/me", { headers: { Authorization: `Bearer ${token}` } }); }
 export async function logout(token: string): Promise<void> { await request<void>("/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }); }
@@ -31,3 +43,7 @@ export async function convertProspect(token: string, prospectId: string): Promis
 export async function listContacts(token: string): Promise<ContactRecord[]> { return request<ContactRecord[]>("/crm/contacts", { headers: { Authorization: `Bearer ${token}` } }); }
 export async function listOpportunities(token: string): Promise<OpportunityRecord[]> { return request<OpportunityRecord[]>("/crm/opportunities", { headers: { Authorization: `Bearer ${token}` } }); }
 export async function createOpportunity(token: string, payload: { contact_id: string; name: string; service?: string; stage?: string; estimated_value?: number; owner_user_id?: string; notes?: string }): Promise<OpportunityRecord> { return request<OpportunityRecord>("/crm/opportunities", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }); }
+export async function listClients(token: string): Promise<ClientRecord[]> { return request<ClientRecord[]>("/clients", { headers: { Authorization: `Bearer ${token}` } }); }
+export async function startClientOnboarding(token: string, clientId: string): Promise<ClientRecord> { return request<ClientRecord>(`/clients/${clientId}/onboarding/start`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }); }
+export async function listClientContacts(token: string, clientId: string): Promise<ClientContactRecord[]> { return request<ClientContactRecord[]>(`/clients/${clientId}/contacts`, { headers: { Authorization: `Bearer ${token}` } }); }
+export async function listClientAgreements(token: string, clientId: string): Promise<AgreementRecord[]> { return request<AgreementRecord[]>(`/clients/${clientId}/agreements`, { headers: { Authorization: `Bearer ${token}` } }); }
