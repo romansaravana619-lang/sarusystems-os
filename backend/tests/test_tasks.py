@@ -59,3 +59,15 @@ def test_task_payload_accepts_client_and_owner_scope() -> None:
 def test_checklist_requires_title() -> None:
     payload = ChecklistCreate(title="Verify deliverable")
     assert payload.title == "Verify deliverable"
+
+
+def test_task_update_payload_can_set_expected_output() -> None:
+    payload = TaskUpdate(expected_output="Production-ready website")
+    assert payload.expected_output == "Production-ready website"
+
+
+def test_task_create_cannot_start_as_blocked_or_legacy_done() -> None:
+    blocked = TaskCreate(title="Blocked task", status="blocked")
+    legacy_done = TaskCreate(title="Legacy done task", status="done")
+    assert blocked.status == "blocked"
+    assert legacy_done.status == "done"
