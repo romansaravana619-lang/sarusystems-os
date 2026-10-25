@@ -4,8 +4,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 PROJECT_STATUSES = {"requirements_pending", "ready", "development", "testing", "review", "delivery", "completed", "on_hold", "cancelled"}
-MILESTONE_STATUSES = {"pending", "in_progress", "completed", "on_hold", "cancelled"}
-DELIVERABLE_STATUSES = {"pending", "submitted", "in_review", "revision_required", "approved", "rejected"}
+MILESTONE_STATUSES = {"pending", "planned", "active", "in_progress", "review", "completed", "delayed", "on_hold", "cancelled"}
+DELIVERABLE_STATUSES = {"pending", "not_submitted", "submitted", "in_review", "revision_required", "approved", "rejected"}
 RISK_STATUSES = {"open", "mitigated", "closed"}
 ISSUE_STATUSES = {"open", "in_progress", "resolved", "closed"}
 TASK_STATUSES = {"backlog", "ready", "in_progress", "blocked", "review", "revision", "completed", "cancelled", "done"}
@@ -93,16 +93,22 @@ class RequirementResponse(BaseModel):
 class MilestoneCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
+    objective: str | None = None
+    acceptance_criteria: str | None = None
     due_at: datetime | None = None
     sequence: int = Field(default=1, ge=1)
+    founder_review: str | None = None
 
 
 class MilestoneUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
+    objective: str | None = None
+    acceptance_criteria: str | None = None
     status: str | None = None
     due_at: datetime | None = None
     sequence: int | None = Field(default=None, ge=1)
+    founder_review: str | None = None
 
 
 class MilestoneResponse(BaseModel):
@@ -111,22 +117,34 @@ class MilestoneResponse(BaseModel):
     project_id: UUID
     name: str
     description: str | None
+    objective: str | None
+    acceptance_criteria: str | None
     status: str
     due_at: datetime | None
     sequence: int
+    founder_review: str | None
+    completed_at: datetime | None
 
 
 class DeliverableCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
+    acceptance_criteria: str | None = None
     milestone_id: UUID | None = None
+    task_id: UUID | None = None
+    final_file_or_repository: str | None = None
 
 
 class DeliverableUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
+    acceptance_criteria: str | None = None
     milestone_id: UUID | None = None
+    task_id: UUID | None = None
     status: str | None = None
+    revision_required: bool | None = None
+    final_approval: bool | None = None
+    final_file_or_repository: str | None = None
     review_notes: str | None = None
 
 
@@ -135,9 +153,14 @@ class DeliverableResponse(BaseModel):
     id: UUID
     project_id: UUID
     milestone_id: UUID | None
+    task_id: UUID | None
     title: str
     description: str | None
+    acceptance_criteria: str | None
     status: str
+    revision_required: bool
+    final_approval: bool
+    final_file_or_repository: str | None
     submitted_at: datetime | None
     reviewed_at: datetime | None
     review_notes: str | None
