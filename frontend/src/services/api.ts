@@ -6,6 +6,12 @@ export type UserRecord = { id: string; company_id: string; email: string; full_n
 export type RoleRecord = { id: string; name: string; description: string | null; is_active: boolean; permission_ids: string[] };
 export type PermissionRecord = { id: string; code: string; description: string | null };
 export type AuditRecord = { id: string; actor_user_id: string | null; action: string; entity_type: string; entity_id: string | null; details: string | null; created_at: string };
+export type CommandCenterResponse = {
+  user: { id: string; full_name: string; email: string; is_active: boolean; roles: string[] };
+  attention: { inactive_users: number; recent_audit_events: number };
+  counts: { users: number; active_users: number; roles: number; permissions: number };
+  recent_activity: AuditRecord[];
+};
 export type CreateUserPayload = { company_id: string; email: string; full_name: string; password: string; role_ids: string[] };
 type RolePermissionsResponse = { role_id: string; permission_ids: string[] };
 
@@ -18,6 +24,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export async function login(email: string, password: string): Promise<TokenResponse> { return request<TokenResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }); }
 export async function getMe(token: string): Promise<MeResponse> { return request<MeResponse>("/auth/me", { headers: { Authorization: `Bearer ${token}` } }); }
 export async function logout(token: string): Promise<void> { await request<void>("/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }); }
+export async function getCommandCenter(token: string): Promise<CommandCenterResponse> { return request<CommandCenterResponse>("/command-center", { headers: { Authorization: `Bearer ${token}` } }); }
 export async function listUsers(token: string): Promise<UserRecord[]> { return request<UserRecord[]>("/users", { headers: { Authorization: `Bearer ${token}` } }); }
 export async function listRoles(token: string): Promise<RoleRecord[]> { return request<RoleRecord[]>("/roles", { headers: { Authorization: `Bearer ${token}` } }); }
 export async function listPermissions(token: string): Promise<PermissionRecord[]> { return request<PermissionRecord[]>("/permissions", { headers: { Authorization: `Bearer ${token}` } }); }
