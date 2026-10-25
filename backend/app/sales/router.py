@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_permission
 from app.core.database import get_db
-from app.crm.schemas import OPPORTUNITY_STAGES
 from app.crm.router import OPPORTUNITY_TRANSITIONS
+from app.crm.schemas import OPPORTUNITY_STAGES
 from app.sales.models import DealOutcome, Discovery, Proposal, Requirement
 from app.sales.schemas import (
     DealOutcomeCreate,
@@ -25,7 +25,29 @@ from app.shared.models import AuditLog, Opportunity, User
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
-PROPOSAL_STATUSES = {"draft", "internal_review", "ready_to_send", "sent", "viewed", "negotiation", "accepted", "rejected", "expired"}
+PROPOSAL_STATUSES = {
+    "draft",
+    "internal_review",
+    "ready_to_send",
+    "sent",
+    "viewed",
+    "negotiation",
+    "accepted",
+    "rejected",
+    "expired",
+}
+
+PROPOSAL_TRANSITIONS = {
+    "draft": {"internal_review"},
+    "internal_review": {"draft", "ready_to_send"},
+    "ready_to_send": {"internal_review", "sent"},
+    "sent": {"viewed", "negotiation", "accepted", "rejected", "expired"},
+    "viewed": {"negotiation", "accepted", "rejected", "expired"},
+    "negotiation": {"accepted", "rejected", "expired"},
+    "accepted": set(),
+    "rejected": set(),
+    "expired": set(),
+}
 
 
 def _opportunity(db: Session, company_id: UUID, opportunity_id: UUID) -> Opportunity:
@@ -41,6 +63,15 @@ def _move_opportunity(db: Session, opportunity: Opportunity, target: str) -> Non
     if target not in OPPORTUNITY_TRANSITIONS.get(opportunity.stage, set()):
         raise HTTPException(status_code=409, detail=f"Invalid opportunity stage transition: {opportunity.stage} -> {target}.")
     opportunity.stage = target
+
+
+def _validate_proposal_status_transition(current: str, target: str) -> None:
+    if target not in PROPOSAL_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid proposal status.")
+    if target == current:
+        return
+    if target not in PROPOSAL_TRANSITIONS.get(current, set()):
+        raise HTTPException(status_code=409, detail=f"Invalid proposal status transition: {current} -> {target}.")
 
 
 @router.get("/opportunities/{opportunity_id}/discoveries", response_model=list[DiscoveryResponse])
@@ -76,17 +107,36 @@ def create_requirement(opportunity_id: UUID, payload: RequirementCreate, current
         raise HTTPException(status_code=409, detail="Requirements can only be captured after discovery.")
     if opportunity.stage == "discovery":
         _move_opportunity(db, opportunity, "requirement_captured")
-    requirement = Requirement(opportunity_id=opportunity.id, created_by_user_id=current_user.id, approved=False, **payload.model_dump(exclude={"approved"}))
+    requirement = Requirement(opportunity_id=opportunity.id, created_by_user_id=current_user.id, approved=False, **payload.model_dump())
     db.add(requirement)
     db.flush()
-    if payload.approved:
-        requirement.approved = True
-        requirement.approved_by_user_id = current_user.id
-        requirement.approved_at = datetime.now(timezone.utc)
     db.add(AuditLog(actor_user_id=current_user.id, action="requirement.create", entity_type="Requirement", entity_id=str(requirement.id)))
     db.commit()
     db.refresh(requirement)
     return requirement
+
+
+@router.post("/requirements/{requirement_id}/approve", response_model=RequirementResponse)
+def approve_requirement(requirement_id: UUID, current_user: User = Depends(require_permission("sales.requirements.approve")), db: Session = Depends(get_db)) -> Requirement:
+    requirement = db.get(Requirement, requirement_id)
+    if requirement is None:
+        raise HTTPException(status_code=404, detail="Requirement not found.")
+    opportunity = _opportunity(db, current_user.company_id, requirement.opportunity_id)
+    if requirement.approved:
+        return requirement
+    requirement.approved = True
+    requirement.approved_by_user_id = current_user.id
+    requirement.approved_at = datetime.now(timezone.utc)
+    db.add(AuditLog(actor_user_id=current_user.id, action="requirement.approve", entity_type="Requirement", entity_id=str(requirement.id), details=f"Opportunity {opportunity.id}"))
+    db.commit()
+    db.refresh(requirement)
+    return requirement
+
+
+@router.get("/opportunities/{opportunity_id}/proposals", response_model=list[ProposalResponse])
+def list_proposals(opportunity_id: UUID, current_user: User = Depends(require_permission("sales.proposals.view")), db: Session = Depends(get_db)) -> list[Proposal]:
+    _opportunity(db, current_user.company_id, opportunity_id)
+    return list(db.scalars(select(Proposal).where(Proposal.opportunity_id == opportunity_id).order_by(Proposal.created_at.desc())).all())
 
 
 @router.post("/opportunities/{opportunity_id}/proposals", response_model=ProposalResponse, status_code=status.HTTP_201_CREATED)
@@ -112,8 +162,8 @@ def update_proposal(proposal_id: UUID, payload: ProposalUpdate, current_user: Us
         raise HTTPException(status_code=404, detail="Proposal not found.")
     opportunity = _opportunity(db, current_user.company_id, proposal.opportunity_id)
     values = payload.model_dump(exclude_unset=True)
-    if "status" in values and values["status"] not in PROPOSAL_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid proposal status.")
+    if "status" in values:
+        _validate_proposal_status_transition(proposal.status, values["status"])
     for key, value in values.items():
         setattr(proposal, key, value)
     db.add(AuditLog(actor_user_id=current_user.id, action="proposal.update", entity_type="Proposal", entity_id=str(proposal.id), details=f"Opportunity {opportunity.id}"))
@@ -122,11 +172,27 @@ def update_proposal(proposal_id: UUID, payload: ProposalUpdate, current_user: Us
     return proposal
 
 
+@router.post("/proposals/{proposal_id}/send", response_model=ProposalResponse)
+def send_proposal(proposal_id: UUID, current_user: User = Depends(require_permission("sales.proposals.edit")), db: Session = Depends(get_db)) -> Proposal:
+    proposal = db.get(Proposal, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Proposal not found.")
+    _opportunity(db, current_user.company_id, proposal.opportunity_id)
+    _validate_proposal_status_transition(proposal.status, "sent")
+    proposal.status = "sent"
+    db.add(AuditLog(actor_user_id=current_user.id, action="proposal.send", entity_type="Proposal", entity_id=str(proposal.id)))
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+
 @router.post("/opportunities/{opportunity_id}/win", response_model=DealResponse)
 def win_deal(opportunity_id: UUID, payload: DealOutcomeCreate, current_user: User = Depends(require_permission("sales.deal.decide")), db: Session = Depends(get_db)) -> DealOutcome:
     opportunity = _opportunity(db, current_user.company_id, opportunity_id)
+    if opportunity.stage == "won":
+        raise HTTPException(status_code=409, detail="A won opportunity cannot be decided again.")
     proposals = list(db.scalars(select(Proposal).where(Proposal.opportunity_id == opportunity.id)).all())
-    if not proposals or not any(proposal.status == "accepted" for proposal in proposals):
+    if not any(proposal.status == "accepted" for proposal in proposals):
         raise HTTPException(status_code=409, detail="An accepted proposal is required before marking the deal won.")
     _move_opportunity(db, opportunity, "won")
     outcome = DealOutcome(opportunity_id=opportunity.id, outcome="won", notes=payload.notes, decided_by_user_id=current_user.id, decided_at=datetime.now(timezone.utc))
@@ -141,6 +207,8 @@ def lose_deal(opportunity_id: UUID, payload: DealOutcomeCreate, current_user: Us
     opportunity = _opportunity(db, current_user.company_id, opportunity_id)
     if opportunity.stage == "won":
         raise HTTPException(status_code=409, detail="A won opportunity cannot be marked lost.")
+    if opportunity.stage == "lost":
+        raise HTTPException(status_code=409, detail="A lost opportunity cannot be decided again.")
     _move_opportunity(db, opportunity, "lost")
     outcome = DealOutcome(opportunity_id=opportunity.id, outcome="lost", notes=payload.notes, decided_by_user_id=current_user.id, decided_at=datetime.now(timezone.utc))
     db.add(outcome)
