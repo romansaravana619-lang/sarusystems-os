@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import {
   createUser,
@@ -39,7 +39,7 @@ function UsersPage({ token, companyId }: UsersPageProps) {
     void load();
   }, [token]);
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
     try {
