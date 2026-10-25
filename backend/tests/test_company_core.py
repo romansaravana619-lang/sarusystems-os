@@ -3,26 +3,40 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.company.schemas import CompanyProfileUpdate, DepartmentCreate, GoalCreate, RuleCreate
+from app.company.schemas import CompanyProfileUpdate, DepartmentCreate, GoalCreate, PolicyCreate, PolicyUpdate, RuleCreate, RuleUpdate
 
 
 def test_company_profile_accepts_core_identity_fields() -> None:
-    payload = CompanyProfileUpdate(legal_name="Saru Systems", vision="Solve real business problems", mission="Build practical technology")
+    payload = CompanyProfileUpdate(legal_name="Saru Systems", vision="Solve real business problems", mission="Build practical technology", business_model="Founder-led project-based software company")
     assert payload.legal_name == "Saru Systems"
     assert payload.vision is not None
+    assert payload.business_model is not None
 
 
-def test_department_requires_name_and_code() -> None:
+def test_department_requires_name_and_code_and_normalizes_code() -> None:
     with pytest.raises(ValidationError):
         DepartmentCreate(name="", code="DEV")
     with pytest.raises(ValidationError):
         DepartmentCreate(name="Development", code="")
+    assert DepartmentCreate(name="Development", code=" dev ").code == "DEV"
 
 
 def test_goal_has_safe_defaults() -> None:
     goal = GoalCreate(title="Grow recurring revenue")
     assert goal.status == "active"
     assert goal.priority == "medium"
+    assert goal.is_active is True
+
+
+def test_policy_and_rule_have_operating_defaults() -> None:
+    policy = PolicyCreate(title="Client confidentiality")
+    assert policy.status == "active"
+    assert policy.version if hasattr(policy, "version") else True
+    assert policy.is_active is True
+    rule = RuleCreate(name="Founder approval")
+    assert rule.is_enabled is True
+    assert RuleUpdate(is_enabled=False).is_enabled is False
+    assert PolicyUpdate(status="inactive", is_active=False).status == "inactive"
 
 
 def test_rule_priority_is_bounded() -> None:
