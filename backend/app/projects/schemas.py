@@ -8,7 +8,7 @@ MILESTONE_STATUSES = {"pending", "in_progress", "completed", "on_hold", "cancell
 DELIVERABLE_STATUSES = {"pending", "submitted", "in_review", "revision_required", "approved", "rejected"}
 RISK_STATUSES = {"open", "mitigated", "closed"}
 ISSUE_STATUSES = {"open", "in_progress", "resolved", "closed"}
-TASK_STATUSES = {"backlog", "to_do", "in_progress", "blocked", "review", "done", "cancelled"}
+TASK_STATUSES = {"backlog", "ready", "in_progress", "blocked", "review", "revision", "completed", "cancelled", "done"}
 
 
 class ProjectCreate(BaseModel):
@@ -208,13 +208,13 @@ class ProjectWorkspaceResponse(BaseModel):
     scope: ScopeResponse | None
     requirements: list[RequirementResponse]
     milestones: list[MilestoneResponse]
-    tasks: list[ProjectTaskSummary]
+    tasks: list[ProjectTaskSummary] = Field(default_factory=list)
     deliverables: list[DeliverableResponse]
     risks: list[RiskResponse]
     issues: list[IssueResponse]
     open_risks: int
     open_issues: int
     pending_requirements: int
-    open_tasks: int
-    completed_tasks: int
+    open_tasks: int = 0
+    completed_tasks: int = 0
     completion_percent: int
