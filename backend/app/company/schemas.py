@@ -145,9 +145,22 @@ class RuleResponse(RuleCreate):
     updated_at: datetime
 
 
+class CompanyServiceSummary(BaseModel):
+    id: UUID
+    code: str
+    name: str
+    category: str | None
+    pricing_model: str
+    base_price: float | None
+    currency: str
+    typical_duration_days: int | None
+    is_active: bool
+
+
 class CompanyCoreResponse(BaseModel):
     company: dict
     profile: CompanyProfileResponse
+    services: list[CompanyServiceSummary]
     departments: list[DepartmentResponse]
     goals: list[GoalResponse]
     policies: list[PolicyResponse]
