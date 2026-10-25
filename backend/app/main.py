@@ -9,16 +9,11 @@ from app.core.config import settings
 from app.crm.router import router as crm_router
 from app.roles.router import router as roles_router
 from app.sales.router import router as sales_router
+from app.services.router import router as services_router
 from app.tasks.router import router as tasks_router
 from app.users.router import router as users_router
 
-
-app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
-    description="Founder operating system for Saru Systems.",
-)
-
+app = FastAPI(title=settings.app_name, version=settings.app_version, description="Founder operating system for Saru Systems.")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -35,6 +30,7 @@ app.include_router(command_center_router)
 app.include_router(crm_router)
 app.include_router(sales_router)
 app.include_router(clients_router)
+app.include_router(services_router)
 app.include_router(tasks_router)
 
 
