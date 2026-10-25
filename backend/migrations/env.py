@@ -13,6 +13,7 @@ from app.services import models as service_models  # noqa: F401
 from app.company import models as company_models  # noqa: F401
 from app.command_center import models as command_center_models  # noqa: F401
 from app.projects import models as project_models  # noqa: F401
+from app.freelancers import models as freelancer_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
