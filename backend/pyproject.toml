@@ -34,5 +34,9 @@ where = ["."]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# FastAPI dependency injection intentionally uses Depends(...) in defaults.
+ignore = ["B008"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
