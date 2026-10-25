@@ -17,12 +17,13 @@ def test_prospect_create_accepts_core_lead_data() -> None:
     )
 
     assert payload.name == "Anitha Makeup Artist"
-    assert payload.status if hasattr(payload, "status") else True
+    assert payload.email == "hello@example.com"
+    assert payload.source == "instagram"
 
 
-def test_prospect_update_rejects_unknown_status_at_router_boundary() -> None:
-    payload = ProspectUpdate(status="not-a-real-stage")
-    assert payload.status == "not-a-real-stage"
+def test_prospect_update_accepts_status_for_router_validation() -> None:
+    payload = ProspectUpdate(status="qualified")
+    assert payload.status == "qualified"
 
 
 def test_opportunity_defaults_to_qualification() -> None:
