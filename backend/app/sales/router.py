@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.auth.dependencies import require_permission
@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.crm.router import OPPORTUNITY_TRANSITIONS
 from app.crm.schemas import OPPORTUNITY_STAGES
 from app.sales.models import DealOutcome, Discovery, Negotiation, Proposal, Quotation, Requirement
-from app.sales.schemas import (DealOutcomeCreate, DealResponse, DiscoveryCreate, DiscoveryResponse, NegotiationCreate, NegotiationResponse, NegotiationUpdate, ProposalCreate, ProposalResponse, ProposalUpdate, QuotationCreate, QuotationResponse, QuotationUpdate, RequirementCreate, RequirementResponse, SalesDashboardResponse)
+from app.sales.schemas import (DealOutcomeCreate, DealResponse, DiscoveryCreate, DiscoveryResponse, NegotiationCreate, NegotiationResponse, NegotiationUpdate, ProposalCreate, ProposalResponse, ProposalUpdate, QuotationCreate, QuotationResponse, QuotationUpdate, RequirementCreate, RequirementResponse, SalesDashboardResponse, SalesPipelineItem)
 from app.shared.models import AuditLog, Opportunity, User
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -54,6 +54,17 @@ def dashboard(current_user:User=Depends(require_permission("sales.dashboard.view
     total=len(opps); conversion=round((len(won)/total)*100,2) if total else 0
     return SalesDashboardResponse(total_opportunities=total,open_opportunities=len(open_opps),pipeline_value=float(sum((o.estimated_value or 0) for o in open_opps)),discovery_count=len(discoveries),requirement_count=len(requirements),proposal_count=len(proposals),quotation_count=len(quotations),negotiation_count=len(negotiations),won_count=len(won),won_value=float(sum((o.estimated_value or 0) for o in won)),lost_count=len(lost),lost_value=float(sum((o.estimated_value or 0) for o in lost)),conversion_rate=conversion,by_stage=by_stage,by_lost_reason=by_reason)
 
+@router.get("/pipeline",response_model=list[SalesPipelineItem])
+def pipeline(current_user:User=Depends(require_permission("sales.pipeline.view")),db:Session=Depends(get_db)):
+    opps=list(db.scalars(select(Opportunity).where(Opportunity.company_id==current_user.company_id).order_by(Opportunity.updated_at.desc())).all())
+    items=[]
+    for opportunity in opps:
+        proposal=db.scalars(select(Proposal).where(Proposal.opportunity_id==opportunity.id).order_by(Proposal.created_at.desc())).first()
+        quotation=db.scalars(select(Quotation).where(Quotation.opportunity_id==opportunity.id).order_by(Quotation.created_at.desc())).first()
+        negotiation=db.scalars(select(Negotiation).where(Negotiation.opportunity_id==opportunity.id).order_by(Negotiation.created_at.desc())).first()
+        items.append(SalesPipelineItem(opportunity_id=opportunity.id,name=opportunity.name,service=opportunity.service,stage=opportunity.stage,estimated_value=float(opportunity.estimated_value) if opportunity.estimated_value is not None else None,owner_user_id=opportunity.owner_user_id,proposal_status=proposal.status if proposal else None,quotation_status=quotation.status if quotation else None,negotiation_status=negotiation.status if negotiation else None,negotiation_next_action=negotiation.next_action if negotiation else None,negotiation_next_action_at=negotiation.next_action_at if negotiation else None))
+    return items
+
 @router.get("/opportunities/{opportunity_id}/discoveries",response_model=list[DiscoveryResponse])
 def list_discoveries(opportunity_id:UUID,current_user:User=Depends(require_permission("sales.discovery.view")),db:Session=Depends(get_db)): _opportunity(db,current_user.company_id,opportunity_id); return list(db.scalars(select(Discovery).where(Discovery.opportunity_id==opportunity_id).order_by(Discovery.created_at.desc())).all())
 @router.post("/opportunities/{opportunity_id}/discoveries",response_model=DiscoveryResponse,status_code=201)
@@ -96,7 +107,6 @@ def send_proposal(proposal_id:UUID,current_user:User=Depends(require_permission(
     record=db.get(Proposal,proposal_id)
     if record is None: raise HTTPException(404,"Proposal not found.")
     _opportunity(db,current_user.company_id,record.opportunity_id); _proposal_transition(record.status,"sent"); record.status="sent"; _audit(db,current_user,"proposal.send","Proposal",record.id); db.commit(); db.refresh(record); return record
-
 @router.get("/opportunities/{opportunity_id}/quotations",response_model=list[QuotationResponse])
 def list_quotations(opportunity_id:UUID,current_user:User=Depends(require_permission("sales.quotations.view")),db:Session=Depends(get_db)): _opportunity(db,current_user.company_id,opportunity_id); return list(db.scalars(select(Quotation).where(Quotation.opportunity_id==opportunity_id).order_by(Quotation.created_at.desc())).all())
 @router.post("/opportunities/{opportunity_id}/quotations",response_model=QuotationResponse,status_code=201)
@@ -115,7 +125,6 @@ def update_quotation(quotation_id:UUID,payload:QuotationUpdate,current_user:User
     if "status" in values: _quotation_transition(record.status,values["status"])
     for key,value in values.items(): setattr(record,key,value)
     record.total_amount=float(record.subtotal or 0)+float(record.tax_amount or 0); _audit(db,current_user,"quotation.update","Quotation",record.id); db.commit(); db.refresh(record); return record
-
 @router.get("/opportunities/{opportunity_id}/negotiations",response_model=list[NegotiationResponse])
 def list_negotiations(opportunity_id:UUID,current_user:User=Depends(require_permission("sales.negotiations.view")),db:Session=Depends(get_db)): _opportunity(db,current_user.company_id,opportunity_id); return list(db.scalars(select(Negotiation).where(Negotiation.opportunity_id==opportunity_id).order_by(Negotiation.created_at.desc())).all())
 @router.post("/opportunities/{opportunity_id}/negotiations",response_model=NegotiationResponse,status_code=201)
@@ -136,7 +145,6 @@ def update_negotiation(negotiation_id:UUID,payload:NegotiationUpdate,current_use
     if "status" in values and values["status"] not in NEGOTIATION_STATUSES: raise HTTPException(400,"Invalid negotiation status.")
     for key,value in values.items(): setattr(record,key,value)
     _audit(db,current_user,"negotiation.update","Negotiation",record.id); db.commit(); db.refresh(record); return record
-
 @router.post("/opportunities/{opportunity_id}/win",response_model=DealResponse)
 def win_deal(opportunity_id:UUID,payload:DealOutcomeCreate,current_user:User=Depends(require_permission("sales.deal.decide")),db:Session=Depends(get_db)):
     opportunity=_opportunity(db,current_user.company_id,opportunity_id)
