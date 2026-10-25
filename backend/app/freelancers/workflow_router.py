@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,9 @@ from app.freelancers.schemas import (
     ASSIGNMENT_STATUSES,
     AgreementResponse,
     ApplicationResponse,
+    AssignmentCreate,
     AssignmentResponse,
+    AssignmentUpdate,
 )
 
 router = APIRouter(prefix="/freelancers", tags=["freelancers"])
@@ -40,8 +42,10 @@ AGREEMENT_TRANSITIONS = {
     "terminated": set(),
 }
 
+
 class ApplicationTransition(BaseModel):
     status: str
+
 
 class AgreementUpdate(BaseModel):
     status: str | None = None
@@ -120,7 +124,7 @@ def transition_application(
     if payload.status != application.status and payload.status not in APPLICATION_TRANSITIONS.get(application.status, set()):
         raise HTTPException(status_code=409, detail=f"Invalid application lifecycle transition: {application.status} -> {payload.status}.")
     application.status = payload.status
-    _audit(db, current_user, "freelancer.application.status", "FreelancerApplication", application.id, f"{payload.status}")
+    _audit(db, current_user, "freelancer.application.status", "FreelancerApplication", application.id, payload.status)
     db.commit()
     db.refresh(application)
     return application
@@ -153,7 +157,7 @@ def update_agreement(
             raise HTTPException(status_code=422, detail="Agreement expiry must be after its effective date.")
     for key, value in values.items():
         setattr(agreement, key, value)
-    _audit(db, current_user, "freelancer.agreement.update", "FreelancerAgreement", agreement.id, f"{target}")
+    _audit(db, current_user, "freelancer.agreement.update", "FreelancerAgreement", agreement.id, target)
     db.commit()
     db.refresh(agreement)
     return agreement
@@ -162,21 +166,18 @@ def update_agreement(
 @router.post("/{freelancer_id}/assignments", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
 def create_eligible_assignment(
     freelancer_id: UUID,
-    payload,
+    payload: AssignmentCreate,
     current_user: User = Depends(require_permission("freelancers.assign")),
     db: Session = Depends(get_db),
 ) -> FreelancerAssignment:
-    from app.freelancers.schemas import AssignmentCreate
-
-    data = AssignmentCreate.model_validate(payload)
     freelancer = _freelancer(db, current_user.company_id, freelancer_id)
-    project = db.get(Project, data.project_id)
+    project = db.get(Project, payload.project_id)
     if project is None or project.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Project not found.")
-    if data.status not in ASSIGNMENT_STATUSES:
+    if payload.status not in ASSIGNMENT_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid assignment status.")
-    _validate_assignment_eligibility(db, freelancer, project, data.allocation_percent, data.status)
-    assignment = FreelancerAssignment(freelancer_id=freelancer.id, **data.model_dump())
+    _validate_assignment_eligibility(db, freelancer, project, payload.allocation_percent, payload.status)
+    assignment = FreelancerAssignment(freelancer_id=freelancer.id, **payload.model_dump())
     db.add(assignment)
     db.flush()
     _audit(db, current_user, "freelancer.assignment.create", "FreelancerAssignment", assignment.id, "eligibility checks passed")
@@ -188,17 +189,15 @@ def create_eligible_assignment(
 @router.patch("/assignments/{assignment_id}", response_model=AssignmentResponse)
 def update_eligible_assignment(
     assignment_id: UUID,
-    payload,
+    payload: AssignmentUpdate,
     current_user: User = Depends(require_permission("freelancers.assign")),
     db: Session = Depends(get_db),
 ) -> FreelancerAssignment:
-    from app.freelancers.schemas import AssignmentUpdate
-
     assignment = db.get(FreelancerAssignment, assignment_id)
     if assignment is None:
         raise HTTPException(status_code=404, detail="Assignment not found.")
     freelancer = _freelancer(db, current_user.company_id, assignment.freelancer_id)
-    values = AssignmentUpdate.model_validate(payload).model_dump(exclude_unset=True)
+    values = payload.model_dump(exclude_unset=True)
     target = values.get("status", assignment.status)
     if target not in ASSIGNMENT_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid assignment status.")
