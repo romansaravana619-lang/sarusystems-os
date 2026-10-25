@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.audit.router import router as audit_router
 from app.auth.router import router as auth_router
@@ -11,6 +12,14 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Founder operating system for Saru Systems.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(auth_router)
