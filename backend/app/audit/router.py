@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,13 +21,13 @@ def list_audit_logs(
 @router.get("/{entity_type}/{entity_id}")
 def entity_audit_history(
     entity_type: str,
-    entity_id: UUID,
+    entity_id: str,
     _: User = Depends(require_permission("audit.view")),
     db: Session = Depends(get_db),
 ) -> list[AuditLog]:
     statement = (
         select(AuditLog)
-        .where(AuditLog.entity_type == entity_type, AuditLog.entity_id == str(entity_id))
+        .where(AuditLog.entity_type == entity_type, AuditLog.entity_id == entity_id)
         .order_by(AuditLog.created_at.desc())
     )
     return list(db.scalars(statement).all())
