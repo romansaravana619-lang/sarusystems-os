@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_permission
 from app.core.database import get_db
+from app.roles.schemas import PermissionCreate, PermissionResponse, RoleCreate
 from app.shared.models import AuditLog, Permission, Role, User
-from app.roles.schemas import PermissionCreate, RoleCreate
 
 router = APIRouter(tags=["roles"])
 
@@ -43,11 +43,7 @@ def create_role(
     if len(permissions) != len(set(payload.permission_ids)):
         raise HTTPException(status_code=400, detail="One or more permissions do not exist.")
 
-    role = Role(
-        name=payload.name,
-        description=payload.description,
-        permissions=permissions,
-    )
+    role = Role(name=payload.name, description=payload.description, permissions=permissions)
     db.add(role)
     db.flush()
     db.add(
@@ -69,7 +65,7 @@ def create_role(
     }
 
 
-@router.get("/permissions")
+@router.get("/permissions", response_model=list[PermissionResponse])
 def list_permissions(
     _: User = Depends(require_permission("permissions.view")),
     db: Session = Depends(get_db),
@@ -77,7 +73,7 @@ def list_permissions(
     return list(db.scalars(select(Permission).order_by(Permission.code)).all())
 
 
-@router.post("/permissions", status_code=status.HTTP_201_CREATED)
+@router.post("/permissions", response_model=PermissionResponse, status_code=status.HTTP_201_CREATED)
 def create_permission(
     payload: PermissionCreate,
     current_user: User = Depends(require_permission("permissions.create")),
