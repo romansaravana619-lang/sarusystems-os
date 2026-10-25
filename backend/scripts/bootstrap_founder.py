@@ -40,6 +40,11 @@ PERMISSIONS = {
     "clients.create": "Convert won opportunities into clients",
     "clients.edit": "Edit clients and client records",
     "clients.onboarding": "Start client onboarding",
+    "tasks.view": "View company tasks",
+    "tasks.create": "Create company tasks",
+    "tasks.edit": "Edit task details and lifecycle",
+    "tasks.assign": "Assign tasks to active company users",
+    "tasks.complete": "Complete tasks",
 }
 
 
