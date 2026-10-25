@@ -12,6 +12,25 @@ def test_service_create_defaults() -> None:
     assert payload.base_price is None
 
 
+def test_service_create_accepts_catalog_fields() -> None:
+    payload = ServiceCreate(
+        code="SOFT",
+        name="Custom Software",
+        category="Development",
+        pricing_model="fixed",
+        base_price=25000,
+        currency="INR",
+        typical_duration_days=30,
+        required_skills="Python, FastAPI",
+        freelancer_roles="Backend Developer",
+        workflow_template="Discovery > Build > Review > Launch",
+        deliverable_template="Application > Documentation",
+    )
+    assert payload.category == "Development"
+    assert payload.base_price == 25000
+    assert payload.typical_duration_days == 30
+
+
 def test_service_item_requires_name() -> None:
     payload = ServiceItemCreate(name="Requirements call")
     assert payload.is_mandatory is True
