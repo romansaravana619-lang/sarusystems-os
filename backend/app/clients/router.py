@@ -23,6 +23,21 @@ from app.shared.models import AuditLog, Contact, Opportunity, User
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
+CLIENT_STATUS_TRANSITIONS = {
+    "onboarding": {"active", "inactive", "archived"},
+    "active": {"at_risk", "inactive", "archived"},
+    "at_risk": {"active", "inactive", "archived"},
+    "inactive": {"active", "archived"},
+    "archived": set(),
+}
+AGREEMENT_STATUS_TRANSITIONS = {
+    "draft": {"sent", "cancelled"},
+    "sent": {"signed", "expired", "cancelled"},
+    "signed": set(),
+    "expired": set(),
+    "cancelled": set(),
+}
+
 
 def _client(db: Session, company_id: UUID, client_id: UUID) -> Client:
     client = db.get(Client, client_id)
@@ -31,12 +46,40 @@ def _client(db: Session, company_id: UUID, client_id: UUID) -> Client:
     return client
 
 
+def _agreement(db: Session, company_id: UUID, agreement_id: UUID) -> Agreement:
+    agreement = db.get(Agreement, agreement_id)
+    if agreement is None:
+        raise HTTPException(status_code=404, detail="Agreement not found.")
+    client = db.get(Client, agreement.client_id)
+    if client is None or client.company_id != company_id:
+        raise HTTPException(status_code=404, detail="Agreement not found.")
+    return agreement
+
+
 def _validate_owner(db: Session, company_id: UUID, owner_user_id: UUID | None) -> None:
     if owner_user_id is None:
         return
     owner = db.scalar(select(User).where(User.id == owner_user_id, User.company_id == company_id))
     if owner is None or not owner.is_active:
         raise HTTPException(status_code=400, detail="Owner must be an active user in the company.")
+
+
+def _validate_client_transition(current: str, target: str) -> None:
+    if target not in CLIENT_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid client status.")
+    if current == target:
+        return
+    if target not in CLIENT_STATUS_TRANSITIONS.get(current, set()):
+        raise HTTPException(status_code=409, detail=f"Invalid client status transition: {current} -> {target}.")
+
+
+def _validate_agreement_transition(current: str, target: str) -> None:
+    if target not in AGREEMENT_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid agreement status.")
+    if current == target:
+        return
+    if target not in AGREEMENT_STATUS_TRANSITIONS.get(current, set()):
+        raise HTTPException(status_code=409, detail=f"Invalid agreement status transition: {current} -> {target}.")
 
 
 @router.get("", response_model=list[ClientResponse])
@@ -100,11 +143,7 @@ def update_client(
     client = _client(db, current_user.company_id, client_id)
     values = payload.model_dump(exclude_unset=True)
     if "status" in values:
-        target = values["status"]
-        if target not in CLIENT_STATUSES:
-            raise HTTPException(status_code=400, detail="Invalid client status.")
-        if client.status == "archived" and target != "archived":
-            raise HTTPException(status_code=409, detail="Archived clients cannot be reactivated.")
+        _validate_client_transition(client.status, values["status"])
     if "owner_user_id" in values:
         _validate_owner(db, current_user.company_id, values["owner_user_id"])
     for key, value in values.items():
@@ -122,8 +161,8 @@ def start_onboarding(
     db: Session = Depends(get_db),
 ) -> Client:
     client = _client(db, current_user.company_id, client_id)
-    if client.status == "archived":
-        raise HTTPException(status_code=409, detail="Archived clients cannot start onboarding.")
+    if client.status != "onboarding":
+        raise HTTPException(status_code=409, detail="Onboarding can only be started for an onboarding client.")
     if client.onboarding_started_at is None:
         client.onboarding_started_at = datetime.now(timezone.utc)
         db.add(AuditLog(actor_user_id=current_user.id, action="client.onboarding.start", entity_type="Client", entity_id=str(client.id)))
@@ -183,6 +222,25 @@ def create_agreement(
     db.add(agreement)
     db.flush()
     db.add(AuditLog(actor_user_id=current_user.id, action="client.agreement.create", entity_type="Agreement", entity_id=str(agreement.id), details=f"Client {client.id}"))
+    db.commit()
+    db.refresh(agreement)
+    return agreement
+
+
+@router.patch("/agreements/{agreement_id}", response_model=AgreementResponse)
+def update_agreement(
+    agreement_id: UUID,
+    payload: AgreementCreate,
+    current_user: User = Depends(require_permission("clients.edit")),
+    db: Session = Depends(get_db),
+) -> Agreement:
+    agreement = _agreement(db, current_user.company_id, agreement_id)
+    _validate_agreement_transition(agreement.status, payload.status)
+    agreement.title = payload.title
+    agreement.status = payload.status
+    agreement.document_id = payload.document_id
+    agreement.notes = payload.notes
+    db.add(AuditLog(actor_user_id=current_user.id, action="client.agreement.update", entity_type="Agreement", entity_id=str(agreement.id), details=f"Status {payload.status}"))
     db.commit()
     db.refresh(agreement)
     return agreement
