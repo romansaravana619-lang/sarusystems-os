@@ -14,6 +14,7 @@ from app.clients.schemas import (
     AgreementResponse,
     ClientContactCreate,
     ClientContactResponse,
+    ClientCreate,
     ClientResponse,
     ClientUpdate,
 )
@@ -48,16 +49,11 @@ def list_clients(
 
 @router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
 def create_client(
-    payload: ClientUpdate | None = None,
-    *,
-    opportunity_id: UUID | None = None,
+    payload: ClientCreate,
     current_user: User = Depends(require_permission("clients.create")),
     db: Session = Depends(get_db),
 ) -> Client:
-    if opportunity_id is None:
-        raise HTTPException(status_code=400, detail="A won opportunity is required to create a client.")
-
-    opportunity = db.get(Opportunity, opportunity_id)
+    opportunity = db.get(Opportunity, payload.opportunity_id)
     if opportunity is None or opportunity.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Opportunity not found.")
     if opportunity.stage != "won":
@@ -71,10 +67,7 @@ def create_client(
     if contact is None or contact.company_id != current_user.company_id:
         raise HTTPException(status_code=409, detail="Opportunity contact is not available for client conversion.")
 
-    owner_user_id = payload.owner_user_id if payload is not None else None
-    notes = payload.notes if payload is not None else None
-    _validate_owner(db, current_user.company_id, owner_user_id)
-
+    _validate_owner(db, current_user.company_id, payload.owner_user_id)
     client = Client(
         company_id=opportunity.company_id,
         opportunity_id=opportunity.id,
@@ -85,8 +78,8 @@ def create_client(
         email=str(contact.email) if contact.email else None,
         phone=contact.phone,
         status="onboarding",
-        owner_user_id=owner_user_id,
-        notes=notes,
+        owner_user_id=payload.owner_user_id,
+        notes=payload.notes,
     )
     db.add(client)
     db.flush()
