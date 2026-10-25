@@ -34,6 +34,10 @@ class MarketingCampaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     owner_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     goal: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    target_leads: Mapped[int | None] = mapped_column(Integer)
+    target_conversions: Mapped[int | None] = mapped_column(Integer)
+    target_spend: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    target_revenue: Mapped[float | None] = mapped_column(Numeric(12, 2))
 
 
 class CampaignProspect(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -55,7 +59,9 @@ class CampaignMetric(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     leads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     positive_replies: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     conversions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    revenue: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     spend: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("campaign_id", "metric_date", name="uq_marketing_campaign_metric_date"),)
 
 
 class MarketingActivity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
