@@ -9,6 +9,7 @@ from app.company.router import router as company_router
 from app.core.config import settings
 from app.crm.router import router as crm_router
 from app.freelancers.router import router as freelancers_router
+from app.freelancers.workflow_router import router as freelancer_workflow_router
 from app.projects.router import router as projects_router
 from app.roles.router import router as roles_router
 from app.sales.router import router as sales_router
@@ -30,6 +31,7 @@ app.include_router(clients_router)
 app.include_router(services_router)
 app.include_router(projects_router)
 app.include_router(tasks_router)
+app.include_router(freelancer_workflow_router)
 app.include_router(freelancers_router)
 
 @app.get("/health", tags=["system"])
