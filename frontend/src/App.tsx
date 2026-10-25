@@ -1,12 +1,14 @@
 import { useState } from "react";
 
 import AuthGate from "./features/auth/AuthGate";
+import RolesPage from "./features/roles/RolesPage";
 import UsersPage from "./features/users/UsersPage";
 import type { MeResponse } from "./services/api";
 
 function FounderConsole({ user, token, signOut }: { user: MeResponse; token: string; signOut: () => Promise<void> }) {
-  const [activeModule, setActiveModule] = useState<"command" | "users">("command");
+  const [activeModule, setActiveModule] = useState<"command" | "users" | "roles">("command");
   const canManageUsers = user.permissions.includes("users.view");
+  const canManageRoles = user.permissions.includes("roles.view");
 
   return (
     <main className="console-shell">
@@ -17,23 +19,17 @@ function FounderConsole({ user, token, signOut }: { user: MeResponse; token: str
         </div>
         <div className="header-actions">
           {canManageUsers && <button className="secondary-button" type="button" onClick={() => setActiveModule(activeModule === "users" ? "command" : "users")}>{activeModule === "users" ? "Command Center" : "Users"}</button>}
+          {canManageRoles && <button className="secondary-button" type="button" onClick={() => setActiveModule(activeModule === "roles" ? "command" : "roles")}>{activeModule === "roles" ? "Command Center" : "Roles & Permissions"}</button>}
           <button className="secondary-button" type="button" onClick={() => void signOut()}>Sign out</button>
         </div>
       </header>
 
-      {activeModule === "users" && canManageUsers ? (
-        <UsersPage token={token} companyId={user.company_id} />
-      ) : (
+      {activeModule === "users" && canManageUsers ? <UsersPage token={token} companyId={user.company_id} /> : activeModule === "roles" && canManageRoles ? <RolesPage token={token} /> : (
         <>
           <section className="welcome-card">
-            <div>
-              <p className="eyebrow">AUTHENTICATED</p>
-              <h2>Welcome, {user.full_name}</h2>
-              <p className="subtitle">{user.email}</p>
-            </div>
+            <div><p className="eyebrow">AUTHENTICATED</p><h2>Welcome, {user.full_name}</h2><p className="subtitle">{user.email}</p></div>
             <div className="role-badge">{user.roles[0] ?? "User"}</div>
           </section>
-
           <section className="console-grid" aria-label="Command center modules">
             <article><span>01</span><h3>Today</h3><p>Attention queue will live here.</p></article>
             <article><span>02</span><h3>Pipeline</h3><p>CRM and sales visibility comes next.</p></article>
