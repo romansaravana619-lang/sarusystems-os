@@ -8,7 +8,9 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: str = "development"
     api_prefix: str = "/api"
-    database_url: str = "postgresql+psycopg://sarusystems:sarusystems@localhost:5432/sarusystems_os"
+    database_url: str = (
+        "postgresql+psycopg://sarusystems:sarusystems@localhost:5432/sarusystems_os"
+    )
     secret_key: str = "change-me-in-environment"
     access_token_expire_minutes: int = 30
 
