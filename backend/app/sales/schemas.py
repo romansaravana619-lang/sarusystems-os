@@ -43,5 +43,7 @@ class DealOutcomeCreate(BaseModel):
 class DealResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     opportunity_id: UUID; outcome: str; lost_reason: str | None; notes: str | None; decided_by_user_id: UUID; decided_at: datetime
+class SalesPipelineItem(BaseModel):
+    opportunity_id: UUID; name: str; service: str | None; stage: str; estimated_value: float | None; owner_user_id: UUID | None; proposal_status: str | None; quotation_status: str | None; negotiation_status: str | None; negotiation_next_action: str | None; negotiation_next_action_at: datetime | None
 class SalesDashboardResponse(BaseModel):
     total_opportunities: int; open_opportunities: int; pipeline_value: float; discovery_count: int; requirement_count: int; proposal_count: int; quotation_count: int; negotiation_count: int; won_count: int; won_value: float; lost_count: int; lost_value: float; conversion_rate: float; by_stage: dict[str, int]; by_lost_reason: dict[str, int]
