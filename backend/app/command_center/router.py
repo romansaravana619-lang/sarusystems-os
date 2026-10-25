@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import require_permission
@@ -21,7 +21,7 @@ def get_command_center(
         .where(User.id == current_user.id)
     )
     if user is None:
-        raise ValueError("Authenticated user was not found")
+        raise HTTPException(status_code=404, detail="Authenticated user was not found")
 
     user_count = db.scalar(select(func.count(User.id)).where(User.company_id == user.company_id)) or 0
     active_user_count = db.scalar(
@@ -31,7 +31,13 @@ def get_command_center(
     role_count = db.scalar(select(func.count(Role.id)).where(Role.is_active.is_(True))) or 0
     permission_count = db.scalar(select(func.count(Permission.id))) or 0
     recent_activity = list(
-        db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(10)).all()
+        db.scalars(
+            select(AuditLog)
+            .outerjoin(User, AuditLog.actor_user_id == User.id)
+            .where(or_(AuditLog.actor_user_id.is_(None), User.company_id == user.company_id))
+            .order_by(AuditLog.created_at.desc())
+            .limit(10)
+        ).all()
     )
 
     return CommandCenterResponse(
