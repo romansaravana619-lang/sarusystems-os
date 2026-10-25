@@ -5,6 +5,8 @@ Revises: 0001_initial_identity
 Create Date: 2026-10-25
 """
 
+from uuid import uuid4
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -91,7 +93,7 @@ def upgrade() -> None:
     for code, description in permissions:
         op.execute(
             permissions_table.insert().values(
-                id=sa.text("gen_random_uuid()"), code=code, description=description
+                id=uuid4(), code=code, description=description
             )
         )
 
