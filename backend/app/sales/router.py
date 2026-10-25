@@ -17,6 +17,9 @@ PROPOSAL_TRANSITIONS={"draft":{"internal_review"},"internal_review":{"draft","re
 QUOTATION_STATUSES={"draft","sent","accepted","rejected","expired"}
 QUOTATION_TRANSITIONS={"draft":{"sent"},"sent":{"accepted","rejected","expired"},"accepted":set(),"rejected":set(),"expired":set()}
 NEGOTIATION_STATUSES={"open","won","lost","closed"}
+NEGOTIATION_TERMINAL_STATUSES={"won","lost","closed"}
+QUOTATION_TERMINAL_STATUSES={"accepted","rejected","expired"}
+PROPOSAL_TERMINAL_STATUSES={"accepted","rejected","expired"}
 LOST_REASONS={"price","budget","timing","competitor","scope_mismatch","no_response","not_a_fit","other"}
 
 def _opportunity(db, company_id, opportunity_id):
@@ -35,6 +38,8 @@ def _proposal_transition(current,target):
 def _quotation_transition(current,target):
     if target not in QUOTATION_STATUSES: raise HTTPException(400,"Invalid quotation status.")
     if target!=current and target not in QUOTATION_TRANSITIONS.get(current,set()): raise HTTPException(409,f"Invalid quotation status transition: {current} -> {target}.")
+def _ensure_mutable(status, terminal_statuses, entity_name):
+    if status in terminal_statuses: raise HTTPException(409,f"{entity_name} is in a terminal state and cannot be edited.")
 
 def _audit(db,user,action,entity,entity_id,details=None): db.add(AuditLog(actor_user_id=user.id,action=action,entity_type=entity,entity_id=str(entity_id),details=details))
 
@@ -99,8 +104,10 @@ def update_proposal(proposal_id:UUID,payload:ProposalUpdate,current_user:User=De
     record=db.get(Proposal,proposal_id)
     if record is None: raise HTTPException(404,"Proposal not found.")
     opportunity=_opportunity(db,current_user.company_id,record.opportunity_id); values=payload.model_dump(exclude_unset=True)
+    _ensure_mutable(record.status,PROPOSAL_TERMINAL_STATUSES,"Proposal")
     if "status" in values: _proposal_transition(record.status,values["status"])
     for key,value in values.items(): setattr(record,key,value)
+    if values.get("status")=="negotiation" and opportunity.stage=="proposal": _move_opportunity(db,opportunity,"negotiation")
     _audit(db,current_user,"proposal.update","Proposal",record.id,f"Opportunity {opportunity.id}"); db.commit(); db.refresh(record); return record
 @router.post("/proposals/{proposal_id}/send",response_model=ProposalResponse)
 def send_proposal(proposal_id:UUID,current_user:User=Depends(require_permission("sales.proposals.edit")),db:Session=Depends(get_db)):
@@ -122,6 +129,7 @@ def update_quotation(quotation_id:UUID,payload:QuotationUpdate,current_user:User
     record=db.get(Quotation,quotation_id)
     if record is None: raise HTTPException(404,"Quotation not found.")
     _opportunity(db,current_user.company_id,record.opportunity_id); values=payload.model_dump(exclude_unset=True)
+    _ensure_mutable(record.status,QUOTATION_TERMINAL_STATUSES,"Quotation")
     if "status" in values: _quotation_transition(record.status,values["status"])
     for key,value in values.items(): setattr(record,key,value)
     record.total_amount=float(record.subtotal or 0)+float(record.tax_amount or 0); _audit(db,current_user,"quotation.update","Quotation",record.id); db.commit(); db.refresh(record); return record
@@ -141,6 +149,7 @@ def update_negotiation(negotiation_id:UUID,payload:NegotiationUpdate,current_use
     record=db.get(Negotiation,negotiation_id)
     if record is None: raise HTTPException(404,"Negotiation not found.")
     _opportunity(db,current_user.company_id,record.opportunity_id)
+    _ensure_mutable(record.status,NEGOTIATION_TERMINAL_STATUSES,"Negotiation")
     values=payload.model_dump(exclude_unset=True)
     if "status" in values and values["status"] not in NEGOTIATION_STATUSES: raise HTTPException(400,"Invalid negotiation status.")
     for key,value in values.items(): setattr(record,key,value)
