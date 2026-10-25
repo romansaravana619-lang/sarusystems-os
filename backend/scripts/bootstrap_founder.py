@@ -1,0 +1,78 @@
+import os
+
+from sqlalchemy import select
+
+from app.core.database import SessionLocal
+from app.core.security import hash_password
+from app.shared.models import Company, Permission, Role, User
+
+PERMISSIONS = {
+    "users.view": "View company users",
+    "users.create": "Create company users",
+    "roles.view": "View roles",
+    "roles.create": "Create roles",
+    "permissions.view": "View permissions",
+    "permissions.create": "Create permissions",
+    "roles.permissions.manage": "Manage role permissions",
+    "audit.view": "View audit history",
+}
+
+
+def required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def main() -> None:
+    company_name = os.getenv("FOUNDER_COMPANY_NAME", "Saru Systems")
+    company_code = os.getenv("FOUNDER_COMPANY_CODE", "SARU")
+    founder_email = required_env("FOUNDER_EMAIL")
+    founder_name = os.getenv("FOUNDER_NAME", "Founder")
+    founder_password = required_env("FOUNDER_PASSWORD")
+
+    with SessionLocal.begin() as db:
+        company = db.scalar(select(Company).where(Company.code == company_code))
+        if company is None:
+            company = Company(name=company_name, code=company_code)
+            db.add(company)
+            db.flush()
+
+        permissions: list[Permission] = []
+        for code, description in PERMISSIONS.items():
+            permission = db.scalar(select(Permission).where(Permission.code == code))
+            if permission is None:
+                permission = Permission(code=code, description=description)
+                db.add(permission)
+                db.flush()
+            permissions.append(permission)
+
+        role = db.scalar(select(Role).where(Role.name == "Founder / Super Admin"))
+        if role is None:
+            role = Role(name="Founder / Super Admin", description="Full V1 founder control")
+            db.add(role)
+            db.flush()
+        role.permissions = permissions
+
+        founder = db.scalar(select(User).where(User.email == founder_email))
+        if founder is None:
+            founder = User(
+                company_id=company.id,
+                email=founder_email,
+                full_name=founder_name,
+                password_hash=hash_password(founder_password),
+                roles=[role],
+            )
+            db.add(founder)
+        else:
+            founder.company_id = company.id
+            founder.full_name = founder_name
+            founder.roles = [role]
+            founder.is_active = True
+
+    print(f"Founder bootstrap completed for {founder_email}.")
+
+
+if __name__ == "__main__":
+    main()
