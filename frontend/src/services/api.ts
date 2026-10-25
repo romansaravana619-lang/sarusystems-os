@@ -45,6 +45,11 @@ export type CreateUserPayload = {
   role_ids: string[];
 };
 
+type RolePermissionsResponse = {
+  role_id: string;
+  permission_ids: string[];
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -64,63 +69,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function login(email: string, password: string): Promise<TokenResponse> {
-  return request<TokenResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+  return request<TokenResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
 }
 
 export async function getMe(token: string): Promise<MeResponse> {
-  return request<MeResponse>("/auth/me", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  return request<MeResponse>("/auth/me", { headers: { Authorization: `Bearer ${token}` } });
 }
 
 export async function logout(token: string): Promise<void> {
-  await request<void>("/auth/logout", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  await request<void>("/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
 }
 
 export async function listUsers(token: string): Promise<UserRecord[]> {
-  return request<UserRecord[]>("/users", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  return request<UserRecord[]>("/users", { headers: { Authorization: `Bearer ${token}` } });
 }
 
 export async function listRoles(token: string): Promise<RoleRecord[]> {
-  return request<RoleRecord[]>("/roles", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  return request<RoleRecord[]>("/roles", { headers: { Authorization: `Bearer ${token}` } });
 }
 
 export async function listPermissions(token: string): Promise<PermissionRecord[]> {
-  return request<PermissionRecord[]>("/permissions", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  return request<PermissionRecord[]>("/permissions", { headers: { Authorization: `Bearer ${token}` } });
 }
 
 export async function createUser(token: string, payload: CreateUserPayload): Promise<UserRecord> {
-  return request<UserRecord>("/users", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
+  return request<UserRecord>("/users", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
 }
 
 export async function createRole(token: string, payload: { name: string; description?: string; permission_ids: string[] }): Promise<RoleRecord> {
-  return request<RoleRecord>("/roles", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
+  return request<RoleRecord>("/roles", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
 }
 
-export async function replaceRolePermissions(token: string, roleId: string, permissionIds: string[]): Promise<RoleRecord> {
-  return request<RoleRecord>(`/roles/${roleId}/permissions`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(permissionIds),
-  });
+export async function replaceRolePermissions(token: string, roleId: string, permissionIds: string[]): Promise<RolePermissionsResponse> {
+  return request<RolePermissionsResponse>(`/roles/${roleId}/permissions`, { method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(permissionIds) });
 }
