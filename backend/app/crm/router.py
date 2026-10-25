@@ -22,6 +22,27 @@ from app.shared.models import AuditLog, Contact, Opportunity, Prospect, User
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
+PROSPECT_TRANSITIONS = {
+    "new": {"contacted", "qualified", "lost", "nurture"},
+    "contacted": {"qualified", "discovery", "lost", "nurture"},
+    "qualified": {"discovery", "proposal", "lost", "nurture"},
+    "discovery": {"proposal", "lost", "nurture"},
+    "proposal": {"won", "lost", "nurture"},
+    "won": set(),
+    "lost": {"nurture", "new"},
+    "nurture": {"new", "contacted", "qualified", "lost"},
+}
+
+OPPORTUNITY_TRANSITIONS = {
+    "qualification": {"discovery", "lost"},
+    "discovery": {"requirement_captured", "lost"},
+    "requirement_captured": {"proposal", "lost"},
+    "proposal": {"negotiation", "won", "lost"},
+    "negotiation": {"won", "lost", "proposal"},
+    "won": set(),
+    "lost": {"qualification"},
+}
+
 
 def _validate_owner(db: Session, company_id: UUID, owner_user_id: UUID | None) -> None:
     if owner_user_id is None:
@@ -29,6 +50,15 @@ def _validate_owner(db: Session, company_id: UUID, owner_user_id: UUID | None) -
     owner = db.scalar(select(User).where(User.id == owner_user_id, User.company_id == company_id))
     if owner is None or not owner.is_active:
         raise HTTPException(status_code=400, detail="Owner must be an active user in the company.")
+
+
+def _validate_transition(current: str, target: str, transitions: dict[str, set[str]], valid_values: set[str], label: str) -> None:
+    if target not in valid_values:
+        raise HTTPException(status_code=400, detail=f"Invalid {label}.")
+    if target == current:
+        return
+    if target not in transitions.get(current, set()):
+        raise HTTPException(status_code=409, detail=f"Invalid {label} transition: {current} -> {target}.")
 
 
 @router.get("/prospects", response_model=list[ProspectResponse])
@@ -66,8 +96,8 @@ def update_prospect(
     if prospect is None or prospect.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Prospect not found.")
     values = payload.model_dump(exclude_unset=True)
-    if "status" in values and values["status"] not in PROSPECT_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid prospect status.")
+    if "status" in values:
+        _validate_transition(prospect.status, values["status"], PROSPECT_TRANSITIONS, PROSPECT_STATUSES, "prospect status")
     if "owner_user_id" in values:
         _validate_owner(db, current_user.company_id, values["owner_user_id"])
     for key, value in values.items():
@@ -90,6 +120,8 @@ def convert_prospect(
     existing = db.scalar(select(Contact).where(Contact.prospect_id == prospect.id))
     if existing is not None:
         return existing
+    if prospect.status not in {"qualified", "discovery", "proposal"}:
+        raise HTTPException(status_code=409, detail="Prospect must be qualified before conversion to a contact.")
     contact = Contact(
         company_id=prospect.company_id,
         prospect_id=prospect.id,
@@ -99,7 +131,6 @@ def convert_prospect(
         phone=prospect.phone,
         notes=prospect.notes,
     )
-    prospect.status = "qualified"
     db.add(contact)
     db.flush()
     db.add(AuditLog(actor_user_id=current_user.id, action="prospect.convert", entity_type="Prospect", entity_id=str(prospect.id), details=f"Converted to Contact {contact.id}"))
@@ -171,8 +202,8 @@ def update_opportunity(
     if opportunity is None or opportunity.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Opportunity not found.")
     values = payload.model_dump(exclude_unset=True)
-    if "stage" in values and values["stage"] not in OPPORTUNITY_STAGES:
-        raise HTTPException(status_code=400, detail="Invalid opportunity stage.")
+    if "stage" in values:
+        _validate_transition(opportunity.stage, values["stage"], OPPORTUNITY_TRANSITIONS, OPPORTUNITY_STAGES, "opportunity stage")
     if "owner_user_id" in values:
         _validate_owner(db, current_user.company_id, values["owner_user_id"])
     for key, value in values.items():
