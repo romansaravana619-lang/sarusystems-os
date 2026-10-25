@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
+from itertools import pairwise
 
 import pytest
 from fastapi import HTTPException
@@ -57,7 +58,7 @@ def test_owner_validation_rejects_inactive_user() -> None:
 
 def test_prospect_lifecycle_follows_approved_sequence() -> None:
     sequence = ["new", "contacted", "responded", "discovery_scheduled", "discovery_completed", "proposal_sent", "negotiation", "won"]
-    for current, target in zip(sequence, sequence[1:]):
+    for current, target in pairwise(sequence):
         _validate_transition(current, target, PROSPECT_TRANSITIONS, {"new", "contacted", "responded", "discovery_scheduled", "discovery_completed", "proposal_sent", "negotiation", "won", "lost", "on_hold"}, "prospect status")
 
 
