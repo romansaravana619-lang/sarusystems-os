@@ -1,8 +1,8 @@
 from uuid import uuid4
 import pytest
 from fastapi import HTTPException
-from app.sales.router import LOST_REASONS, PROPOSAL_STATUSES, _proposal_transition, _quotation_transition
-from app.sales.schemas import DealOutcomeCreate, DiscoveryCreate, ProposalCreate, QuotationCreate, SalesDashboardResponse
+from app.sales.router import LOST_REASONS, PROPOSAL_STATUSES, PROPOSAL_TERMINAL_STATUSES, QUOTATION_TERMINAL_STATUSES, NEGOTIATION_TERMINAL_STATUSES, _proposal_transition, _quotation_transition, _ensure_mutable
+from app.sales.schemas import DealOutcomeCreate, DiscoveryCreate, ProposalCreate, QuotationCreate, SalesDashboardResponse, SalesPipelineItem
 
 def test_discovery_requires_summary():
     with pytest.raises(ValueError): DiscoveryCreate(summary="")
@@ -18,6 +18,13 @@ def test_proposal_cannot_skip_review():
 def test_proposal_terminal_state():
     with pytest.raises(HTTPException) as exc: _proposal_transition("accepted","rejected")
     assert exc.value.status_code==409
+def test_terminal_records_cannot_be_edited():
+    for status in PROPOSAL_TERMINAL_STATUSES: 
+        with pytest.raises(HTTPException): _ensure_mutable(status,PROPOSAL_TERMINAL_STATUSES,"Proposal")
+    for status in QUOTATION_TERMINAL_STATUSES:
+        with pytest.raises(HTTPException): _ensure_mutable(status,QUOTATION_TERMINAL_STATUSES,"Quotation")
+    for status in NEGOTIATION_TERMINAL_STATUSES:
+        with pytest.raises(HTTPException): _ensure_mutable(status,NEGOTIATION_TERMINAL_STATUSES,"Negotiation")
 def test_quotation_lifecycle():
     _quotation_transition("draft","sent"); _quotation_transition("sent","accepted")
 def test_quotation_terminal_state():
@@ -31,5 +38,9 @@ def test_lost_reason_catalog_and_payload():
 def test_dashboard_contract():
     data=SalesDashboardResponse(total_opportunities=1,open_opportunities=1,pipeline_value=1000,discovery_count=1,requirement_count=1,proposal_count=1,quotation_count=0,negotiation_count=0,won_count=0,won_value=0,lost_count=0,lost_value=0,conversion_rate=0,by_stage={"qualification":1},by_lost_reason={})
     assert data.pipeline_value==1000
+def test_pipeline_workspace_contract():
+    item=SalesPipelineItem(opportunity_id=uuid4(),name="Website Project",service="Professional Website",stage="negotiation",estimated_value=50000,owner_user_id=None,proposal_status="negotiation",quotation_status="sent",negotiation_status="open",negotiation_next_action="Follow up",negotiation_next_action_at=None)
+    assert item.stage=="negotiation"
+    assert item.quotation_status=="sent"
 def test_uuid_reference_shape():
     assert isinstance(uuid4(),type(uuid4()))
