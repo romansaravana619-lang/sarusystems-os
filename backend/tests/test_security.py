@@ -1,6 +1,10 @@
 from uuid import uuid4
 
-from app.auth.tokens import create_access_token, decode_access_token
+import jwt
+import pytest
+
+from app.auth.tokens import ALGORITHM, create_access_token, decode_access_token
+from app.core.config import settings
 from app.core.security import hash_password, verify_password
 
 
@@ -18,3 +22,19 @@ def test_access_token_round_trip() -> None:
     token = create_access_token(user_id)
 
     assert decode_access_token(token) == user_id
+
+
+def test_invalid_access_token_is_rejected() -> None:
+    with pytest.raises(jwt.PyJWTError):
+        decode_access_token("not-a-valid-token")
+
+
+def test_non_access_token_type_is_rejected() -> None:
+    token = jwt.encode(
+        {"sub": str(uuid4()), "type": "refresh"},
+        settings.secret_key,
+        algorithm=ALGORITHM,
+    )
+
+    with pytest.raises(jwt.InvalidTokenError):
+        decode_access_token(token)
