@@ -1,0 +1,16 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+export type CompanyProfile = { id: string; company_id: string; legal_name: string | null; tagline: string | null; website: string | null; email: string | null; phone: string | null; address: string | null; industry: string | null; business_model: string | null; vision: string | null; mission: string | null; brand_primary_color: string | null; brand_secondary_color: string | null; logo_url: string | null; is_active: boolean; created_at: string; updated_at: string };
+export type Department = { id: string; company_id: string; name: string; code: string; description: string | null; owner_user_id: string | null; is_active: boolean; created_at: string; updated_at: string };
+export type Goal = { id: string; company_id: string; title: string; description: string | null; status: string; priority: string; target_date: string | null; owner_user_id: string | null; is_active: boolean; created_at: string; updated_at: string };
+export type Policy = { id: string; company_id: string; title: string; description: string | null; policy_type: string; status: string; version: number; is_active: boolean; created_at: string; updated_at: string };
+export type Rule = { id: string; company_id: string; name: string; description: string | null; rule_type: string; condition: string | null; action: string | null; priority: number; is_enabled: boolean; created_at: string; updated_at: string };
+export type CompanyCoreResponse = { company: { id: string; name: string; code: string; is_active: boolean }; profile: CompanyProfile; departments: Department[]; goals: Goal[]; policies: Policy[]; operating_rules: Rule[] };
+
+async function request<T>(path: string, token: string, init?: RequestInit): Promise<T> { const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } }); if (!response.ok) { const body = await response.json().catch(() => null) as { detail?: string } | null; throw new Error(body?.detail ?? "Request failed."); } return response.json() as Promise<T>; }
+export const getCompanyCore = (token: string) => request<CompanyCoreResponse>("/company", token);
+export const updateCompanyProfile = (token: string, payload: Record<string, string>) => request<CompanyProfile>("/company/profile", token, { method: "PATCH", body: JSON.stringify(payload) });
+export const createDepartment = (token: string, payload: { name: string; code: string; description?: string }) => request<Department>("/company/departments", token, { method: "POST", body: JSON.stringify(payload) });
+export const createGoal = (token: string, payload: { title: string; description?: string; priority?: string; target_date?: string }) => request<Goal>("/company/goals", token, { method: "POST", body: JSON.stringify(payload) });
+export const createPolicy = (token: string, payload: { title: string; description?: string; policy_type?: string }) => request<Policy>("/company/policies", token, { method: "POST", body: JSON.stringify(payload) });
+export const createRule = (token: string, payload: { name: string; description?: string; condition?: string; action?: string; priority?: number }) => request<Rule>("/company/rules", token, { method: "POST", body: JSON.stringify(payload) });
