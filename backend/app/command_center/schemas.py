@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -50,12 +50,28 @@ class CommandCenterApprovalItem(BaseModel):
     reference_id: UUID
 
 
+class CommandCenterFounderActionItem(BaseModel):
+    id: UUID
+    category: str
+    source_module: str
+    source_entity_id: UUID | None
+    priority: str
+    description: str
+    required_action: str
+    owner_user_id: UUID
+    due_date: date | None
+    status: str
+    founder_notes: str | None
+    resolution_date: datetime | None
+
+
 class CommandCenterResponse(BaseModel):
     user: CommandCenterUserSummary
     priorities: list[CommandCenterTaskItem]
     follow_ups: list[CommandCenterFollowUpItem]
     approvals: list[CommandCenterApprovalItem]
     deadlines: list[CommandCenterTaskItem]
+    founder_actions: list[CommandCenterFounderActionItem]
     business_health: dict[str, int | float]
     alerts: list[CommandCenterTaskItem]
     quick_actions: list[str]
