@@ -6,82 +6,45 @@
   text-rendering: optimizeLegibility;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #0b0d10; }
+button, input, textarea, select { font: inherit; }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background: #0b0d10;
-}
+.eyebrow { margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: .18em; color: #8e99a8; }
+h1 { margin: 0; font-size: clamp(36px, 7vw, 64px); line-height: 1; }
+h2, h3 { margin-top: 0; }
+.subtitle { margin: 16px 0 28px; color: #aeb7c2; font-size: 16px; line-height: 1.6; }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
+.auth-shell, .loading-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.auth-card { width: min(440px, 100%); padding: 40px; border: 1px solid #252a31; border-radius: 24px; background: #11151a; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+.brand-mark { width: 44px; height: 44px; display: grid; place-items: center; margin-bottom: 24px; border-radius: 12px; background: #f4f6f8; color: #0b0d10; font-weight: 900; }
+.auth-form { display: grid; gap: 18px; }
+.auth-form label { display: grid; gap: 8px; color: #d7dde5; font-size: 14px; font-weight: 600; }
+.auth-form input { width: 100%; padding: 13px 14px; border: 1px solid #303640; border-radius: 10px; outline: none; background: #0b0d10; color: #f4f6f8; }
+.auth-form input:focus { border-color: #697585; }
+.auth-form button, .secondary-button { border: 0; border-radius: 10px; padding: 13px 16px; cursor: pointer; font-weight: 700; }
+.auth-form button { background: #f4f6f8; color: #0b0d10; }
+.auth-form button:disabled { cursor: wait; opacity: .65; }
+.form-error { margin: 0; color: #ff8f8f; font-size: 14px; }
 
-.app-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
+.console-shell { min-height: 100vh; padding: 32px; }
+.console-header { width: min(1180px, 100%); margin: 0 auto 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.console-header h1 { font-size: clamp(32px, 5vw, 52px); }
+.secondary-button { background: #1a1f26; color: #e7ebf0; border: 1px solid #303640; }
+.welcome-card { width: min(1180px, 100%); margin: 0 auto 24px; padding: 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid #252a31; border-radius: 20px; background: #11151a; }
+.welcome-card h2 { margin-bottom: 8px; }
+.role-badge { padding: 9px 12px; border: 1px solid #343b45; border-radius: 999px; color: #d7dde5; font-size: 13px; white-space: nowrap; }
+.console-grid { width: min(1180px, 100%); margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.console-grid article { min-height: 180px; padding: 24px; border: 1px solid #252a31; border-radius: 18px; background: #11151a; }
+.console-grid span { color: #697585; font-size: 12px; font-weight: 700; }
+.console-grid h3 { margin: 32px 0 8px; }
+.console-grid p { margin: 0; color: #8e99a8; line-height: 1.5; }
 
-.hero-card {
-  width: min(720px, 100%);
-  padding: 48px;
-  border: 1px solid #252a31;
-  border-radius: 24px;
-  background: #11151a;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-}
-
-.eyebrow {
-  margin: 0 0 12px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: #8e99a8;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(36px, 7vw, 64px);
-  line-height: 1;
-}
-
-.subtitle {
-  margin: 20px 0 28px;
-  color: #aeb7c2;
-  font-size: 18px;
-  line-height: 1.6;
-}
-
-.status-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid #252a31;
-  border-radius: 999px;
-  color: #d7dde5;
-  font-size: 14px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #55d187;
-}
-
+@media (max-width: 820px) { .console-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px) {
-  .hero-card {
-    padding: 32px 24px;
-    border-radius: 18px;
-  }
+  .auth-card { padding: 30px 22px; border-radius: 18px; }
+  .console-shell { padding: 20px; }
+  .console-header, .welcome-card { align-items: flex-start; flex-direction: column; }
+  .console-header h1 { font-size: 34px; }
+  .console-grid { grid-template-columns: 1fr; }
 }
