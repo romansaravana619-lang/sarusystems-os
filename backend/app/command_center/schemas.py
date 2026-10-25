@@ -24,8 +24,40 @@ class CommandCenterAuditItem(BaseModel):
     created_at: datetime
 
 
+class CommandCenterTaskItem(BaseModel):
+    id: UUID
+    title: str
+    status: str
+    priority: str
+    due_at: datetime | None
+    owner_user_id: UUID | None
+    client_id: UUID | None
+
+
+class CommandCenterFollowUpItem(BaseModel):
+    id: UUID
+    name: str
+    stage: str
+    estimated_value: float | None
+    owner_user_id: UUID | None
+    updated_at: datetime
+
+
+class CommandCenterApprovalItem(BaseModel):
+    id: UUID
+    type: str
+    description: str
+    reference_id: UUID
+
+
 class CommandCenterResponse(BaseModel):
     user: CommandCenterUserSummary
-    attention: dict[str, int]
+    priorities: list[CommandCenterTaskItem]
+    follow_ups: list[CommandCenterFollowUpItem]
+    approvals: list[CommandCenterApprovalItem]
+    deadlines: list[CommandCenterTaskItem]
+    business_health: dict[str, int | float]
+    alerts: list[CommandCenterTaskItem]
+    quick_actions: list[str]
     counts: dict[str, int]
     recent_activity: list[CommandCenterAuditItem]
