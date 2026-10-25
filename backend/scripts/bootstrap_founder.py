@@ -42,6 +42,9 @@ PERMISSIONS = {
     "clients.onboarding": "Manage client onboarding",
     "clients.health": "Review and update client health",
     "clients.documents": "Manage client document metadata",
+    "services.view": "View service catalog",
+    "services.create": "Create services",
+    "services.edit": "Edit services, requirements and deliverables",
     "tasks.view": "View company tasks",
     "tasks.create": "Create company tasks",
     "tasks.edit": "Edit task details and lifecycle",
@@ -70,7 +73,6 @@ def main() -> None:
             company = Company(name=company_name, code=company_code)
             db.add(company)
             db.flush()
-
         permissions: list[Permission] = []
         for code, description in PERMISSIONS.items():
             permission = db.scalar(select(Permission).where(Permission.code == code))
@@ -79,30 +81,21 @@ def main() -> None:
                 db.add(permission)
                 db.flush()
             permissions.append(permission)
-
         role = db.scalar(select(Role).where(Role.name == "Founder / Super Admin"))
         if role is None:
             role = Role(name="Founder / Super Admin", description="Full V1 founder control")
             db.add(role)
             db.flush()
         role.permissions = permissions
-
         founder = db.scalar(select(User).where(User.email == founder_email))
         if founder is None:
-            founder = User(
-                company_id=company.id,
-                email=founder_email,
-                full_name=founder_name,
-                password_hash=hash_password(founder_password),
-                roles=[role],
-            )
+            founder = User(company_id=company.id, email=founder_email, full_name=founder_name, password_hash=hash_password(founder_password), roles=[role])
             db.add(founder)
         else:
             founder.company_id = company.id
             founder.full_name = founder_name
             founder.roles = [role]
             founder.is_active = True
-
     print(f"Founder bootstrap completed for {founder_email}.")
 
 
