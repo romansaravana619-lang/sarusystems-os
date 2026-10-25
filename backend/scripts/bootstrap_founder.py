@@ -7,6 +7,7 @@ from app.core.security import hash_password
 from app.shared.models import Company, Permission, Role, User
 
 PERMISSIONS = {
+    "command_center.view": "View the Founder Command Center",
     "users.view": "View company users",
     "users.create": "Create company users",
     "roles.view": "View roles",
