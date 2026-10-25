@@ -3,7 +3,7 @@ from fastapi import HTTPException
 
 from app.projects.router import PROJECT_TRANSITIONS, _requirements_complete, _validate_transition
 from app.projects.schemas import ProjectCreate
-from app.tasks.router import _validate_project
+from app.tasks.router import _validate_project_context
 
 
 def test_project_creation_requires_name():
@@ -45,7 +45,7 @@ def test_project_task_handoff_rejects_cross_company_project():
             return None
 
     with pytest.raises(HTTPException) as exc:
-        _validate_project(DB(), "company", "project", None)
+        _validate_project_context(DB(), "company", "project", None, None, None)
     assert exc.value.status_code == 400
 
 
@@ -60,7 +60,7 @@ def test_project_task_handoff_rejects_completed_project():
             return Project()
 
     with pytest.raises(HTTPException) as exc:
-        _validate_project(DB(), "company", "project", "client")
+        _validate_project_context(DB(), "company", "project", None, None, "client")
     assert exc.value.status_code == 409
 
 
@@ -75,5 +75,5 @@ def test_project_task_handoff_requires_matching_client():
             return Project()
 
     with pytest.raises(HTTPException) as exc:
-        _validate_project(DB(), "company", "project", "client-b")
+        _validate_project_context(DB(), "company", "project", None, None, "client-b")
     assert exc.value.status_code == 409
