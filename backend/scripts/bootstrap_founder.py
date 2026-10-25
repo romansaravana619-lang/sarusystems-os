@@ -10,12 +10,23 @@ PERMISSIONS = {
     "command_center.view": "View the Founder Command Center",
     "users.view": "View company users",
     "users.create": "Create company users",
+    "users.edit": "Edit company users",
     "roles.view": "View roles",
     "roles.create": "Create roles",
+    "roles.edit": "Edit roles",
     "permissions.view": "View permissions",
     "permissions.create": "Create permissions",
     "roles.permissions.manage": "Manage role permissions",
     "audit.view": "View audit history",
+    "crm.prospects.view": "View CRM prospects",
+    "crm.prospects.create": "Create CRM prospects",
+    "crm.prospects.edit": "Edit CRM prospects",
+    "crm.prospects.convert": "Convert CRM prospects to contacts",
+    "crm.contacts.view": "View CRM contacts",
+    "crm.contacts.create": "Create CRM contacts",
+    "crm.opportunities.view": "View CRM opportunities",
+    "crm.opportunities.create": "Create CRM opportunities",
+    "crm.opportunities.edit": "Edit CRM opportunities",
 }
 
 
