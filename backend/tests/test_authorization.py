@@ -22,6 +22,21 @@ def test_required_permission_allows_access() -> None:
     assert require_permission("users.view")(user) is user
 
 
+def test_command_center_requires_explicit_permission() -> None:
+    user = _user_with_roles(["users.view"])
+
+    with pytest.raises(HTTPException) as exc_info:
+        require_permission("command_center.view")(user)
+
+    assert exc_info.value.status_code == 403
+
+
+def test_command_center_permission_allows_founder_access() -> None:
+    user = _user_with_roles(["command_center.view"])
+
+    assert require_permission("command_center.view")(user) is user
+
+
 def test_missing_permission_returns_forbidden() -> None:
     user = _user_with_roles(["users.create"])
 
