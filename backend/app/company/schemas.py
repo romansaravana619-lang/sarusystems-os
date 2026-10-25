@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CompanyProfileResponse(BaseModel):
@@ -40,6 +40,7 @@ class CompanyProfileUpdate(BaseModel):
     brand_primary_color: str | None = Field(default=None, max_length=30)
     brand_secondary_color: str | None = Field(default=None, max_length=30)
     logo_url: str | None = Field(default=None, max_length=1000)
+    is_active: bool | None = None
 
 
 class DepartmentCreate(BaseModel):
@@ -47,13 +48,18 @@ class DepartmentCreate(BaseModel):
     code: str = Field(min_length=1, max_length=50)
     description: str | None = None
     owner_user_id: UUID | None = None
+    is_active: bool = True
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        return value.strip().upper()
 
 
 class DepartmentResponse(DepartmentCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     company_id: UUID
-    is_active: bool
     created_at: datetime
     updated_at: datetime
 
@@ -65,6 +71,7 @@ class GoalCreate(BaseModel):
     priority: str = "medium"
     target_date: str | None = None
     owner_user_id: UUID | None = None
+    is_active: bool = True
 
 
 class GoalUpdate(BaseModel):
@@ -81,7 +88,6 @@ class GoalResponse(GoalCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     company_id: UUID
-    is_active: bool
     created_at: datetime
     updated_at: datetime
 
@@ -89,16 +95,24 @@ class GoalResponse(GoalCreate):
 class PolicyCreate(BaseModel):
     title: str = Field(min_length=1, max_length=250)
     description: str | None = None
-    policy_type: str = "general"
+    policy_type: str = Field(default="general", min_length=1, max_length=100)
+    status: str = Field(default="active", min_length=1, max_length=50)
+    is_active: bool = True
+
+
+class PolicyUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=250)
+    description: str | None = None
+    policy_type: str | None = Field(default=None, min_length=1, max_length=100)
+    status: str | None = Field(default=None, min_length=1, max_length=50)
+    is_active: bool | None = None
 
 
 class PolicyResponse(PolicyCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     company_id: UUID
-    status: str
     version: int
-    is_active: bool
     created_at: datetime
     updated_at: datetime
 
@@ -106,16 +120,17 @@ class PolicyResponse(PolicyCreate):
 class RuleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=250)
     description: str | None = None
-    rule_type: str = "operating"
+    rule_type: str = Field(default="operating", min_length=1, max_length=100)
     condition: str | None = None
     action: str | None = None
     priority: int = Field(default=100, ge=1, le=10000)
+    is_enabled: bool = True
 
 
 class RuleUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=250)
     description: str | None = None
-    rule_type: str | None = None
+    rule_type: str | None = Field(default=None, min_length=1, max_length=100)
     condition: str | None = None
     action: str | None = None
     priority: int | None = Field(default=None, ge=1, le=10000)
@@ -126,7 +141,6 @@ class RuleResponse(RuleCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     company_id: UUID
-    is_enabled: bool
     created_at: datetime
     updated_at: datetime
 
