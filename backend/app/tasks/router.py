@@ -44,6 +44,7 @@ TASK_STATUS_TRANSITIONS = {
 }
 TERMINAL_STATUSES = {"completed", "cancelled", "done"}
 ACTIVE_STATUSES = TASK_STATUSES - TERMINAL_STATUSES - {"backlog"}
+EXECUTION_STATUSES = {"in_progress", "review", "revision", "completed", "done"}
 
 
 def _task(db: Session, company_id: UUID, task_id: UUID) -> Task:
@@ -119,6 +120,22 @@ def _validate_blocked(db: Session, task_id: UUID) -> None:
         raise HTTPException(status_code=409, detail="A blocked task must have at least one open blocker record.")
 
 
+def _validate_expected_output(task: Task, target_status: str) -> None:
+    if target_status in EXECUTION_STATUSES and not task.expected_output:
+        raise HTTPException(status_code=409, detail="Every execution task must have a clear expected output.")
+
+
+def _validate_dependencies_satisfied(db: Session, task_id: UUID) -> None:
+    pending = db.scalar(
+        select(func.count(TaskDependency.id))
+        .join(Task, Task.id == TaskDependency.depends_on_task_id)
+        .where(TaskDependency.task_id == task_id, Task.status != "completed")
+        .where(Task.status != "done")
+    ) or 0
+    if pending:
+        raise HTTPException(status_code=409, detail="All task dependencies must be completed before execution can proceed.")
+
+
 def _validate_completion(db: Session, task: Task) -> None:
     incomplete_checklist = db.scalar(select(func.count(ChecklistItem.id)).where(ChecklistItem.task_id == task.id, ChecklistItem.is_completed.is_(False))) or 0
     if incomplete_checklist:
@@ -135,13 +152,12 @@ def _validate_dependency(db: Session, company_id: UUID, task_id: UUID, depends_o
     if task_id == depends_on_task_id:
         raise HTTPException(status_code=409, detail="A task cannot depend on itself.")
     dependency_task = _task(db, company_id, depends_on_task_id)
-    if dependency_task.status in TERMINAL_STATUSES:
-        raise HTTPException(status_code=409, detail="A task cannot depend on a completed or cancelled task.")
+    if dependency_task.status == "cancelled":
+        raise HTTPException(status_code=409, detail="A task cannot depend on a cancelled task.")
     existing = db.scalar(select(TaskDependency.id).where(TaskDependency.task_id == task_id, TaskDependency.depends_on_task_id == depends_on_task_id))
     if existing is not None:
         raise HTTPException(status_code=409, detail="This task dependency already exists.")
 
-    # Prevent direct and multi-hop cycles by walking the existing dependency graph.
     frontier = [task_id]
     visited: set[UUID] = set()
     while frontier:
@@ -188,8 +204,8 @@ def create_task(payload: TaskCreate, current_user: User = Depends(require_permis
         raise HTTPException(status_code=400, detail="Invalid task status.")
     if payload.priority not in TASK_PRIORITIES:
         raise HTTPException(status_code=400, detail="Invalid task priority.")
-    if payload.status == "blocked":
-        raise HTTPException(status_code=409, detail="Create the task first, then add a blocker before moving it to Blocked.")
+    if payload.status in {"blocked", "done"}:
+        raise HTTPException(status_code=409, detail="Create the task first, then use the task workflow to progress it.")
     _validate_owner(db, current_user.company_id, payload.owner_user_id, required=_active_task_required_owner(payload.status))
     _validate_client(db, current_user.company_id, payload.client_id)
     _validate_project_context(db, current_user.company_id, payload.project_id, payload.milestone_id, payload.required_deliverable_id, payload.client_id)
@@ -197,6 +213,7 @@ def create_task(payload: TaskCreate, current_user: User = Depends(require_permis
     db.add(task)
     db.flush()
     if task.status == "completed":
+        _validate_expected_output(task, task.status)
         _validate_completion(db, task)
         task.completed_at = datetime.now(timezone.utc)
     _audit(db, current_user, "task.create", "Task", task.id, f"Created task {task.title}")
@@ -223,6 +240,12 @@ def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends
     client_id = values.get("client_id", task.client_id)
     _validate_client(db, current_user.company_id, client_id)
     _validate_project_context(db, current_user.company_id, project_id, milestone_id, deliverable_id, client_id)
+    if "expected_output" in values and values["expected_output"] is not None and not values["expected_output"].strip():
+        raise HTTPException(status_code=400, detail="Expected output cannot be blank.")
+    prospective = Task(expected_output=values.get("expected_output", task.expected_output))
+    _validate_expected_output(prospective, target_status)
+    if target_status in EXECUTION_STATUSES:
+        _validate_dependencies_satisfied(db, task.id)
     for key, value in values.items():
         setattr(task, key, value)
     if target_status == "blocked":
@@ -243,6 +266,8 @@ def submit_task(task_id: UUID, current_user: User = Depends(require_permission("
     task = _task(db, current_user.company_id, task_id)
     _validate_status(task.status, "review")
     _validate_owner(db, current_user.company_id, task.owner_user_id, required=True)
+    _validate_expected_output(task, "review")
+    _validate_dependencies_satisfied(db, task.id)
     task.status = "review"
     _audit(db, current_user, "task.submit", "Task", task.id)
     db.commit(); db.refresh(task)
@@ -263,6 +288,8 @@ def request_revision(task_id: UUID, current_user: User = Depends(require_permiss
 def complete_task(task_id: UUID, current_user: User = Depends(require_permission("tasks.complete")), db: Session = Depends(get_db)) -> Task:
     task = _task(db, current_user.company_id, task_id)
     _validate_status(task.status, "completed")
+    _validate_expected_output(task, "completed")
+    _validate_dependencies_satisfied(db, task.id)
     _validate_completion(db, task)
     task.status = "completed"
     task.completed_at = datetime.now(timezone.utc)
@@ -350,6 +377,8 @@ def update_blocker(task_id: UUID, blocker_id: UUID, payload: TaskBlockerUpdate, 
         open_count = db.scalar(select(func.count(TaskBlocker.id)).where(TaskBlocker.task_id == task_id, TaskBlocker.status == "open")) or 0
         task = _task(db, current_user.company_id, task_id)
         if open_count == 0 and task.status == "blocked":
+            _validate_dependencies_satisfied(db, task.id)
+            _validate_expected_output(task, "in_progress")
             task.status = "in_progress"
     _audit(db, current_user, "task.blocker.update", "TaskBlocker", blocker.id)
     db.commit(); db.refresh(blocker)
