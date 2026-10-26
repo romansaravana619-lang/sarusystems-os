@@ -25,6 +25,7 @@ export const getRequirements=(t:string,id:string)=>get<Requirement[]>(t,"/produc
 export const createRequirement=(t:string,id:string,p:unknown)=>post<Requirement>(t,"/products/"+id+"/requirements",p);
 export const updateRequirement=(t:string,id:string,item:string,p:unknown)=>patch<Requirement>(t,"/products/"+id+"/requirements/"+item,p);
 export const approveRequirement=(t:string,id:string,item:string)=>post<Requirement>(t,"/products/"+id+"/requirements/"+item+"/approve",{});
+export const implementRequirement=(t:string,id:string,item:string)=>post<Requirement>(t,"/products/"+id+"/requirements/"+item+"/implement",{});
 export const getIssues=(t:string,id:string)=>get<Issue[]>(t,"/products/"+id+"/issues");
 export const createIssue=(t:string,id:string,p:unknown)=>post<Issue>(t,"/products/"+id+"/issues",p);
 export const updateIssue=(t:string,id:string,item:string,p:unknown)=>patch<Issue>(t,"/products/"+id+"/issues/"+item,p);
