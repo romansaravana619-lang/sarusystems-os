@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 PLATFORMS = {"instagram", "facebook", "linkedin", "youtube", "website"}
 STATUSES = {"draft", "ready", "scheduled", "published"}
@@ -56,6 +56,12 @@ class SocialPostUpdate(BaseModel):
         if v is not None and v not in STATUSES:
             raise ValueError("Invalid social post status")
         return v
+
+    @model_validator(mode="after")
+    def published_timestamp_is_not_user_controlled(self):
+        if self.published_at is not None:
+            raise ValueError("published_at is system-managed and cannot be set directly")
+        return self
 
 
 class SocialPerformanceUpdate(BaseModel):
