@@ -21,7 +21,7 @@
 - [x] Database migration
 - [x] Founder Calendar workspace
 - [x] Backend contract tests
-- [ ] Final CI verification
-- [ ] Final Notion ↔ GitHub acceptance
+- [x] Final CI verification — Run #779, head `d821eb1c35c93486dbe0a3be1b5641fa40468285`, backend pytest/Ruff and frontend build green
+- [x] Final Notion ↔ GitHub acceptance
 
-The module must not be marked complete until CI is green and the final Notion cross-audit passes. PR remains intentionally open and unmerged.
+**4.19 Calendar & Scheduling is COMPLETE.** PR #11 remains intentionally open and unmerged.
