@@ -13,7 +13,8 @@ router = APIRouter(prefix="/social-media", tags=["social-media"])
 
 def _get(db, company_id, post_id):
     obj = db.get(SocialPost, post_id)
-    if not obj or obj.company_id != company_id: raise HTTPException(404, "Social post not found.")
+    if not obj or obj.company_id != company_id:
+        raise HTTPException(404, "Social post not found.")
     return obj
 
 def _audit(db, user, action, obj):
@@ -22,7 +23,8 @@ def _audit(db, user, action, obj):
 @router.get("/dashboard", response_model=SocialDashboard)
 def dashboard(current_user: User = Depends(require_permission("social_media.dashboard.view")), db: Session = Depends(get_db)):
     posts = list(db.scalars(select(SocialPost).where(SocialPost.company_id == current_user.company_id).order_by(SocialPost.created_at.desc())).all())
-    return SocialDashboard(total_posts=len(posts), drafts=sum(p.status == "draft" for p in posts), ready=sum(p.status == "ready" for p in posts), scheduled=sum(p.status == "scheduled" for p in posts), published=sum(p.status == "published" for p in posts), by_platform=dict(Counter(p.platform for p in posts)), recent_posts=posts[:10])
+    performance = {k: sum(getattr(p, k) for p in posts) for k in ("impressions", "reach", "likes", "comments", "shares", "saves", "clicks", "views")}
+    return SocialDashboard(total_posts=len(posts), drafts=sum(p.status == "draft" for p in posts), ready=sum(p.status == "ready" for p in posts), scheduled=sum(p.status == "scheduled" for p in posts), published=sum(p.status == "published" for p in posts), by_platform=dict(Counter(p.platform for p in posts)), performance=performance, recent_posts=posts[:10])
 
 @router.get("/posts", response_model=list[SocialPostResponse])
 def list_posts(current_user: User = Depends(require_permission("social_media.posts.view")), db: Session = Depends(get_db)):
@@ -42,3 +44,9 @@ def update_post(post_id: UUID, p: SocialPostUpdate, current_user: User = Depends
     if new_status == "published" and not (changes.get("post_content", obj.post_content) or changes.get("creative_url", obj.creative_url)): raise HTTPException(400, "Published posts require content or a creative.")
     for k, v in changes.items(): setattr(obj, k, v)
     _audit(db, current_user, "social_media.post.update", obj); db.commit(); db.refresh(obj); return obj
+
+@router.patch("/posts/{post_id}/performance", response_model=SocialPostResponse)
+def update_performance(post_id: UUID, p: SocialPerformanceUpdate, current_user: User = Depends(require_permission("social_media.posts.edit")), db: Session = Depends(get_db)):
+    obj = _get(db, current_user.company_id, post_id)
+    for k, v in p.model_dump().items(): setattr(obj, k, v)
+    _audit(db, current_user, "social_media.post.performance.update", obj); db.commit(); db.refresh(obj); return obj
