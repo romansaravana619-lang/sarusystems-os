@@ -92,7 +92,7 @@ def _validate_owner_id(db: Session, company_id: UUID, owner_user_id: UUID | None
             raise HTTPException(status_code=400, detail="Owner must be an active user in this company.")
 
 
-def _validate_related_task(db: Session, company_id: UUID, product_id: UUID, task_id: UUID | None) -> None:
+def _validate_related_task(db: Session, company_id: UUID, product_id: UUID, task_id: UUID | None, actor: User | None = None) -> None:
     if task_id is None:
         return
     task = db.scalar(select(Task).where(Task.id == task_id, Task.company_id == company_id))
@@ -106,7 +106,8 @@ def _validate_related_task(db: Session, company_id: UUID, product_id: UUID, task
             raise HTTPException(status_code=400, detail="Development task project must belong to this company.")
     if task.product_id is None:
         task.product_id = product_id
-        db.add(AuditLog(actor_user_id=None, action="task.product.link", entity_type="Task", entity_id=str(task.id), details=f"Linked to product {product_id}"))
+        if actor is not None:
+            _audit(db, actor, "task.product.link", "Task", task.id, f"Linked to product {product_id}")
 
 
 def _validate_feature(db: Session, company_id: UUID, product_id: UUID, feature_id: UUID | None) -> None:
@@ -137,10 +138,10 @@ def _validate_version(db: Session, company_id: UUID, product_id: UUID, version_i
         raise HTTPException(status_code=400, detail="Version must belong to the selected product and company.")
 
 
-def _validate_links(db: Session, company_id: UUID, product_id: UUID, feature_id: UUID | None = None, requirement_id: UUID | None = None, task_id: UUID | None = None, roadmap_item_id: UUID | None = None, version_id: UUID | None = None, assigned_user_id: UUID | None = None, owner_user_id: UUID | None = None) -> None:
+def _validate_links(db: Session, company_id: UUID, product_id: UUID, feature_id: UUID | None = None, requirement_id: UUID | None = None, task_id: UUID | None = None, roadmap_item_id: UUID | None = None, version_id: UUID | None = None, assigned_user_id: UUID | None = None, owner_user_id: UUID | None = None, actor: User | None = None) -> None:
     _validate_feature(db, company_id, product_id, feature_id)
     _validate_requirement(db, company_id, product_id, requirement_id)
-    _validate_related_task(db, company_id, product_id, task_id)
+    _validate_related_task(db, company_id, product_id, task_id, actor)
     _validate_roadmap(db, company_id, product_id, roadmap_item_id)
     _validate_version(db, company_id, product_id, version_id)
     _validate_owner_id(db, company_id, assigned_user_id)
@@ -297,7 +298,7 @@ def list_issues(product_id: UUID, current_user: User = Depends(require_permissio
 @router.post("/{product_id}/issues", response_model=IssueResponse, status_code=201)
 def create_issue(product_id: UUID, p: IssueCreate, current_user: User = Depends(require_permission("products.issues.create")), db: Session = Depends(get_db)):
     _record(db,Product,current_user.company_id,product_id,"Product")
-    _validate_links(db,current_user.company_id,product_id,feature_id=p.feature_id,requirement_id=p.requirement_id,task_id=p.task_id,assigned_user_id=p.assigned_user_id)
+    _validate_links(db,current_user.company_id,product_id,feature_id=p.feature_id,requirement_id=p.requirement_id,task_id=p.task_id,assigned_user_id=p.assigned_user_id,actor=current_user)
     if db.scalar(select(ProductIssue.id).where(ProductIssue.product_id==product_id,ProductIssue.issue_key==p.issue_key)) is not None: raise HTTPException(409,detail="Issue key already exists for this product.")
     obj=ProductIssue(company_id=current_user.company_id,product_id=product_id,**p.model_dump()); db.add(obj); db.flush(); _audit(db,current_user,"product.issue.create","ProductIssue",obj.id,obj.issue_key); db.commit(); db.refresh(obj); return obj
 
@@ -309,7 +310,7 @@ def update_issue(product_id: UUID, issue_id: UUID, p: IssueUpdate, current_user:
     values=p.model_dump(exclude_unset=True)
     target=values.get("status",obj.status)
     if target != obj.status and target not in ISSUE_TRANSITIONS[obj.status]: raise HTTPException(409,detail=f"Invalid issue transition: {obj.status} -> {target}.")
-    _validate_links(db,current_user.company_id,product_id,feature_id=values.get("feature_id",obj.feature_id),requirement_id=values.get("requirement_id",obj.requirement_id),task_id=values.get("task_id",obj.task_id),assigned_user_id=values.get("assigned_user_id",obj.assigned_user_id))
+    _validate_links(db,current_user.company_id,product_id,feature_id=values.get("feature_id",obj.feature_id),requirement_id=values.get("requirement_id",obj.requirement_id),task_id=values.get("task_id",obj.task_id),assigned_user_id=values.get("assigned_user_id",obj.assigned_user_id),actor=current_user)
     if target == "fixed":
         values["fix_date"] = values.get("fix_date") or datetime.now(timezone.utc)
     if target == "verified" and values.get("retest_result",obj.retest_result) != "passed":
