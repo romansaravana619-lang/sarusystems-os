@@ -186,13 +186,20 @@ def upgrade():
     roles_table = sa.table("roles", sa.column("id", sa.Uuid()), sa.column("name", sa.String(100)))
     role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
     bind = op.get_bind()
-    founder_role = bind.execute(sa.select(roles_table.c.id).where(roles_table.c.name == "Founder / Super Admin")).scalar()
+    existing_roles = bind.execute(sa.select(roles_table.c.id)).scalars().all()
     for code, description in PERMISSION_ROWS:
         permission_id = bind.execute(sa.select(permissions_table.c.id).where(permissions_table.c.code == code)).scalar()
         if permission_id is None:
             permission_id = bind.execute(permissions_table.insert().values(code=code, description=description).returning(permissions_table.c.id)).scalar()
-        if founder_role is not None and bind.execute(sa.select(role_permissions.c.permission_id).where(role_permissions.c.role_id == founder_role, role_permissions.c.permission_id == permission_id)).scalar() is None:
-            bind.execute(role_permissions.insert().values(role_id=founder_role, permission_id=permission_id))
+        for role_id in existing_roles:
+            already_granted = bind.execute(
+                sa.select(role_permissions.c.permission_id).where(
+                    role_permissions.c.role_id == role_id,
+                    role_permissions.c.permission_id == permission_id,
+                )
+            ).scalar()
+            if already_granted is None:
+                bind.execute(role_permissions.insert().values(role_id=role_id, permission_id=permission_id))
 
 
 def downgrade():
