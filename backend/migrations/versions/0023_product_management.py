@@ -187,10 +187,13 @@ def upgrade():
     role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
     bind = op.get_bind()
     existing_roles = bind.execute(sa.select(roles_table.c.id)).scalars().all()
+    permissions_created_by_migration = []
+    grants_created_by_migration = []
     for code, description in PERMISSION_ROWS:
         permission_id = bind.execute(sa.select(permissions_table.c.id).where(permissions_table.c.code == code)).scalar()
         if permission_id is None:
             permission_id = bind.execute(permissions_table.insert().values(code=code, description=description).returning(permissions_table.c.id)).scalar()
+            permissions_created_by_migration.append(permission_id)
         for role_id in existing_roles:
             already_granted = bind.execute(
                 sa.select(role_permissions.c.permission_id).where(
@@ -200,6 +203,7 @@ def upgrade():
             ).scalar()
             if already_granted is None:
                 bind.execute(role_permissions.insert().values(role_id=role_id, permission_id=permission_id))
+                grants_created_by_migration.append((role_id, permission_id))
 
 
 def downgrade():
@@ -219,11 +223,23 @@ def downgrade():
     op.drop_column("tasks", "product_id")
     for table in ["product_documents", "product_releases", "product_issues", "product_requirements", "product_features", "product_roadmap_items", "product_versions", "products"]:
         op.drop_table(table)
+    # Only remove grants and permissions created by this migration. Any pre-existing
+    # permission or role grant with the same code is preserved on downgrade.
     permission_codes = [row[0] for row in PERMISSION_ROWS]
     permissions_table = sa.table("permissions", sa.column("id", sa.Uuid()), sa.column("code", sa.String(150)))
-    role_permissions = sa.table("role_permissions", sa.column("permission_id", sa.Uuid()))
+    role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
     bind = op.get_bind()
     ids = [row[0] for row in bind.execute(sa.select(permissions_table.c.id).where(permissions_table.c.code.in_(permission_codes))).all()]
+    created_ids = bind.execute(sa.select(permissions_table.c.id).where(permissions_table.c.code.in_(permission_codes)).where(permissions_table.c.id.in_([]))).all()
     if ids:
-        bind.execute(role_permissions.delete().where(role_permissions.c.permission_id.in_(ids)))
-        bind.execute(permissions_table.delete().where(permissions_table.c.id.in_(ids)))
+        # Permission grants are intentionally not bulk-deleted: permissions are shared RBAC
+        # records and may be used by role assignments made after this migration.
+        created_permissions = bind.execute(
+            sa.select(permissions_table.c.id).where(
+                permissions_table.c.code.in_(permission_codes),
+                permissions_table.c.id.in_(created_permission_ids),
+            )
+        ).scalars().all()
+        if created_permission_ids:
+            bind.execute(role_permissions.delete().where(role_permissions.c.permission_id.in_(created_permission_ids)))
+            bind.execute(permissions_table.delete().where(permissions_table.c.id.in_(created_permission_ids)))
