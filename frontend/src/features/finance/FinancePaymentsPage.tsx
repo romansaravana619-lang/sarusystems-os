@@ -1,34 +1,24 @@
 import { useEffect, useState } from "react";
-import { financeApi, FinanceDashboard, PaymentMilestone } from "./financeApi";
+import { financeApi, FinanceDashboard, PaymentMilestone, Transaction } from "./financeApi";
 
-const money = (value: number) => `₹${Number(value ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-
-export default function FinancePaymentsPage() {
-  const [dashboard, setDashboard] = useState<FinanceDashboard | null>(null);
-  const [milestones, setMilestones] = useState<PaymentMilestone[]>([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    Promise.all([financeApi.dashboard(), financeApi.milestones()])
-      .then(([d, m]) => { setDashboard(d); setMilestones(m); })
-      .catch((e) => setError(e instanceof Error ? e.message : "Unable to load finance data"));
-  }, []);
-
-  if (error) return <section><h1>Finance & Payments</h1><p>{error}</p></section>;
-  if (!dashboard) return <section><h1>Finance & Payments</h1><p>Loading…</p></section>;
-
-  return (
-    <section>
-      <header><h1>Finance & Payments</h1><p>Founder financial operating view.</p></header>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16 }}>
-        <article><strong>Revenue</strong><div>{money(dashboard.revenue)}</div></article>
-        <article><strong>Expenses</strong><div>{money(dashboard.expenses)}</div></article>
-        <article><strong>Outstanding</strong><div>{money(dashboard.outstanding)}</div></article>
-        <article><strong>Freelancer Payments</strong><div>{money(dashboard.freelancer_payments)}</div></article>
-        <article><strong>Project Profitability</strong><div>{money(dashboard.project_profitability)}</div></article>
-      </div>
-      <h2>Payment Milestones</h2>
-      {milestones.length === 0 ? <p>No payment milestones recorded.</p> : <ul>{milestones.map((m) => <li key={m.id}>{m.name} — {money(Number(m.paid_amount))} / {money(Number(m.amount))} — {m.status}</li>)}</ul>}
-    </section>
-  );
+type Props={token:string};
+const money=(value:number)=>`₹${Number(value??0).toLocaleString("en-IN",{maximumFractionDigits:2})}`;
+const today=()=>new Date().toISOString().slice(0,10);
+export default function FinancePaymentsPage({token}:Props){
+ const [dashboard,setDashboard]=useState<FinanceDashboard|null>(null);const [milestones,setMilestones]=useState<PaymentMilestone[]>([]);const [transactions,setTransactions]=useState<Transaction[]>([]);const [error,setError]=useState("");
+ const [category,setCategory]=useState("software");const [amount,setAmount]=useState("");const [description,setDescription]=useState("");const [projectId,setProjectId]=useState("");const [clientId,setClientId]=useState("");const [freelancerId,setFreelancerId]=useState("");
+ const [milestoneName,setMilestoneName]=useState("");const [milestoneAmount,setMilestoneAmount]=useState("");const [milestoneProject,setMilestoneProject]=useState("");const [milestoneClient,setMilestoneClient]=useState("");const [dueDate,setDueDate]=useState("");
+ const [paymentId,setPaymentId]=useState("");const [paymentAmount,setPaymentAmount]=useState("");
+ const load=async()=>{try{setError("");const[d,m,t]=await Promise.all([financeApi.dashboard(token),financeApi.milestones(token),financeApi.transactions(token)]);setDashboard(d);setMilestones(m);setTransactions(t)}catch(e){setError(e instanceof Error?e.message:"Unable to load finance data")}};
+ useEffect(()=>{void load()},[token]);
+ const run=async(fn:()=>Promise<unknown>)=>{try{setError("");await fn();await load()}catch(e){setError(e instanceof Error?e.message:"Action failed")}};
+ return <section className="module-panel"><div className="module-heading"><div><p className="eyebrow">4.17 FINANCE & PAYMENTS</p><h2>Finance & Payments Workspace</h2><p>Founder view of revenue, expenses, outstanding client payments, freelancer costs and project profitability.</p></div></div>{error&&<div className="error-banner">{error}</div>}
+ {dashboard&&<><div className="metric-grid">{[["Revenue",dashboard.revenue],["Expenses",dashboard.expenses],["Outstanding",dashboard.outstanding],["Freelancer Payments",dashboard.freelancer_payments],["Project Profitability",dashboard.project_profitability],["Software",dashboard.software_expenses],["Marketing",dashboard.marketing_expenses],["Operating",dashboard.operating_expenses]].map(([label,value])=><article className="metric-card" key={String(label)}><span>{label}</span><strong>{money(Number(value))}</strong></article>)}</div>
+ <div className="module-card"><h3>Project Profitability</h3>{dashboard.project_reports.length===0?<p>No project financial activity yet.</p>:dashboard.project_reports.map(p=><div className="header-actions" key={p.project_id}><span><strong>{p.project_name}</strong> · Revenue {money(Number(p.revenue))} · Expenses {money(Number(p.expenses))}</span><strong>{money(Number(p.profitability))}</strong></div>)}</div></>}
+ <div className="module-card"><h3>Record Expense / Revenue</h3><div className="form-grid"><label>Type<select value={category==="client_payment"?"income":"expense"} onChange={e=>setCategory(e.target.value==="income"?"client_payment":"software")}><option value="expense">Expense</option><option value="income">Client payment</option></select></label><label>Category<select value={category} onChange={e=>setCategory(e.target.value)}>{(category==="client_payment"?["client_payment","revenue","other_income"]:["software","marketing","operating","freelancer"]).map(x=><option key={x}>{x}</option>)}</select></label><label>Amount<input value={amount} onChange={e=>setAmount(e.target.value)} type="number" min="0.01" step="0.01"/></label><label>Description<input value={description} onChange={e=>setDescription(e.target.value)}/></label><label>Project ID<input value={projectId} onChange={e=>setProjectId(e.target.value)}/></label><label>Client ID<input value={clientId} onChange={e=>setClientId(e.target.value)}/></label>{category==="freelancer"&&<label>Freelancer ID<input value={freelancerId} onChange={e=>setFreelancerId(e.target.value)}/></label>}</div><button className="primary-button" type="button" onClick={()=>void run(()=>financeApi.createTransaction(token,{transaction_type:category==="client_payment"||category==="revenue"||category==="other_income"?"income":"expense",category,amount:Number(amount),description,transaction_date:today(),project_id:projectId||null,client_id:clientId||null,freelancer_id:freelancerId||null}))}>Record Transaction</button></div>
+ <div className="module-card"><h3>Create Payment Milestone</h3><div className="form-grid"><label>Name<input value={milestoneName} onChange={e=>setMilestoneName(e.target.value)}/></label><label>Amount<input value={milestoneAmount} onChange={e=>setMilestoneAmount(e.target.value)} type="number" min="0.01" step="0.01"/></label><label>Project ID<input value={milestoneProject} onChange={e=>setMilestoneProject(e.target.value)}/></label><label>Client ID<input value={milestoneClient} onChange={e=>setMilestoneClient(e.target.value)}/></label><label>Due date<input value={dueDate} onChange={e=>setDueDate(e.target.value)} type="date"/></label></div><button className="primary-button" type="button" onClick={()=>void run(()=>financeApi.createMilestone(token,{name:milestoneName,amount:Number(milestoneAmount),project_id:milestoneProject||null,client_id:milestoneClient||null,due_date:dueDate||null}))}>Create Milestone</button></div>
+ <div className="module-card"><h3>Record Milestone Payment</h3><div className="form-grid"><label>Milestone<select value={paymentId} onChange={e=>setPaymentId(e.target.value)}><option value="">Select milestone</option>{milestones.filter(m=>m.status!=="paid").map(m=><option value={m.id} key={m.id}>{m.name} — {money(Number(m.amount)-Number(m.paid_amount))} outstanding</option>)}</select></label><label>Amount<input value={paymentAmount} onChange={e=>setPaymentAmount(e.target.value)} type="number" min="0.01" step="0.01"/></label></div><button className="primary-button" type="button" disabled={!paymentId} onClick={()=>void run(()=>financeApi.recordPayment(token,paymentId,{amount:Number(paymentAmount),payment_date:today()}))}>Record Payment</button></div>
+ <div className="module-card"><h3>Outstanding Payment Milestones</h3>{milestones.length===0?<p>No milestones recorded.</p>:<div>{milestones.map(m=><article className="module-card" key={m.id}><strong>{m.name}</strong><p>{m.status} · {money(Number(m.paid_amount))} / {money(Number(m.amount))}{m.due_date?` · Due ${m.due_date}`:""}</p></article>)}</div>}</div>
+ <div className="module-card"><h3>Recent Transactions</h3>{transactions.length===0?<p>No financial transactions recorded.</p>:transactions.slice(0,20).map(t=><div className="header-actions" key={t.id}><span>{t.transaction_date} · {t.category} · {t.description}</span><strong>{t.transaction_type==="expense"?"-":"+"}{money(Number(t.amount))}</strong></div>)}</div>
+ </section>;
 }
