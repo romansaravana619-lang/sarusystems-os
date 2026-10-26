@@ -192,6 +192,18 @@ def list_tasks(current_user: User = Depends(require_permission("tasks.view")), d
     return list(db.scalars(select(Task).where(Task.company_id == current_user.company_id).order_by(Task.due_at.is_(None), Task.due_at, Task.created_at.desc())).all())
 
 
+@router.get("/by-product/{product_id}", response_model=list[TaskResponse])
+def list_product_tasks(product_id: UUID, current_user: User = Depends(require_permission("tasks.view")), db: Session = Depends(get_db)) -> list[Task]:
+    _validate_product(db, current_user.company_id, product_id)
+    return list(
+        db.scalars(
+            select(Task)
+            .where(Task.company_id == current_user.company_id, Task.product_id == product_id)
+            .order_by(Task.due_at.is_(None), Task.due_at, Task.created_at.desc())
+        ).all()
+    )
+
+
 @router.get("/workspace", response_model=TaskWorkspaceResponse)
 def task_workspace(current_user: User = Depends(require_permission("tasks.view")), db: Session = Depends(get_db)) -> TaskWorkspaceResponse:
     tasks = list(db.scalars(select(Task).where(Task.company_id == current_user.company_id).order_by(Task.due_at.is_(None), Task.due_at, Task.created_at.desc())).all())
