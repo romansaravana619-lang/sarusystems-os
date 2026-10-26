@@ -42,6 +42,6 @@ export const createDocument=(t:string,id:string,p:unknown)=>post<ProductDocument
 export const updateDocument=(t:string,id:string,item:string,p:unknown)=>patch<ProductDocument>(t,"/products/"+id+"/documents/"+item,p);
 export const approveDocument=(t:string,id:string,item:string)=>post<ProductDocument>(t,"/products/"+id+"/documents/"+item+"/approve",{});
 export type DevTask={id:string;title:string;description:string|null;expected_output:string|null;product_id:string|null;project_id:string|null;status:string;priority:string;owner_user_id:string|null;start_at:string|null;due_at:string|null;estimated_hours:number|null;notes:string|null};
-export const getDevTasks=(t:string)=>get<DevTask[]>(t,"/tasks");
+export const getDevTasks=(t:string,productId:string)=>get<DevTask[]>(t,"/tasks/by-product/"+productId);
 export const createDevTask=(t:string,p:unknown)=>post<DevTask>(t,"/tasks",p);
 export const updateDevTask=(t:string,id:string,p:unknown)=>patch<DevTask>(t,"/tasks/"+id,p);
