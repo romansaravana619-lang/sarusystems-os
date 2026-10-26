@@ -122,7 +122,6 @@ def test_linked_asset_must_be_approved_and_pass_brand_qa():
 
 def test_linked_asset_must_belong_to_current_company():
     company_id, asset_id = uuid4(), uuid4()
-    asset = SimpleNamespace(id=asset_id, company_id=uuid4(), status="approved", brand_qa_status="passed")
 
     class DB:
         def scalar(self, statement):
