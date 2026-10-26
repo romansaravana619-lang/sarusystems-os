@@ -8,6 +8,9 @@ branch_labels = None
 depends_on = None
 
 
+PERMISSION_ROWS = [["products.dashboard.view","View product management dashboard"],["products.view","View products"],["products.create","Create products"],["products.edit","Manage products"],["products.roadmap.view","View product roadmaps"],["products.roadmap.edit","Manage product roadmaps"],["products.features.view","View product features"],["products.features.edit","Manage product features"],["products.requirements.view","View product requirements"],["products.requirements.edit","Manage product requirements"],["products.requirements.approve","Approve product requirements"],["products.issues.view","View product issues"],["products.issues.create","Create product issues"],["products.issues.edit","Manage product issues and retests"],["products.versions.view","View product versions"],["products.versions.edit","Manage product versions"],["products.releases.view","View product releases"],["products.releases.edit","Manage product releases"],["products.releases.approve","Approve product releases"],["products.documents.view","View product documentation"],["products.documents.edit","Manage product documentation"],["products.documents.approve","Approve product documentation"]]
+
+
 def upgrade():
     op.create_table(
         "products",
@@ -179,13 +182,12 @@ def upgrade():
     op.add_column("tasks", sa.Column("product_id", sa.Uuid(), sa.ForeignKey("products.id", ondelete="SET NULL"), nullable=True))
     op.create_index("ix_tasks_product_id", "tasks", ["product_id"])
 
-    permission_rows = [["products.dashboard.view","View product management dashboard"],["products.view","View products"],["products.create","Create products"],["products.edit","Manage products"],["products.roadmap.view","View product roadmaps"],["products.roadmap.edit","Manage product roadmaps"],["products.features.view","View product features"],["products.features.edit","Manage product features"],["products.requirements.view","View product requirements"],["products.requirements.edit","Manage product requirements"],["products.requirements.approve","Approve product requirements"],["products.issues.view","View product issues"],["products.issues.create","Create product issues"],["products.issues.edit","Manage product issues and retests"],["products.versions.view","View product versions"],["products.versions.edit","Manage product versions"],["products.releases.view","View product releases"],["products.releases.edit","Manage product releases"],["products.releases.approve","Approve product releases"],["products.documents.view","View product documentation"],["products.documents.edit","Manage product documentation"],["products.documents.approve","Approve product documentation"]]
     permissions_table = sa.table("permissions", sa.column("id", sa.Uuid()), sa.column("code", sa.String(150)), sa.column("description", sa.String(500)))
     roles_table = sa.table("roles", sa.column("id", sa.Uuid()), sa.column("name", sa.String(100)))
     role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
     bind = op.get_bind()
     founder_role = bind.execute(sa.select(roles_table.c.id).where(roles_table.c.name == "Founder / Super Admin")).scalar()
-    for code, description in permission_rows:
+    for code, description in PERMISSION_ROWS:
         permission_id = bind.execute(sa.select(permissions_table.c.id).where(permissions_table.c.code == code)).scalar()
         if permission_id is None:
             permission_id = bind.execute(permissions_table.insert().values(code=code, description=description).returning(permissions_table.c.id)).scalar()
@@ -210,7 +212,7 @@ def downgrade():
     op.drop_column("tasks", "product_id")
     for table in ["product_documents", "product_releases", "product_issues", "product_requirements", "product_features", "product_roadmap_items", "product_versions", "products"]:
         op.drop_table(table)
-    permission_codes = [row[0] for row in permission_rows]
+    permission_codes = [row[0] for row in PERMISSION_ROWS]
     permissions_table = sa.table("permissions", sa.column("id", sa.Uuid()), sa.column("code", sa.String(150)))
     role_permissions = sa.table("role_permissions", sa.column("permission_id", sa.Uuid()))
     bind = op.get_bind()
