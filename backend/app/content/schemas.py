@@ -6,6 +6,7 @@ CONTENT_TYPES = {"post", "carousel", "reel", "video", "story", "article", "blog"
 IDEA_STATUSES = {"idea", "approved", "in_production", "converted", "rejected", "archived"}
 PRIORITIES = {"low", "medium", "high", "urgent"}
 ASSET_STATUSES = {"draft", "in_review", "revision", "approved", "archived"}
+BRAND_QA_STATUSES = {"pending", "passed", "failed", "not_required"}
 PRODUCTION_STATUSES = {"planned", "in_progress", "review", "revision", "completed", "cancelled"}
 PUBLICATION_STATUSES = {"planned", "scheduled", "published", "failed", "cancelled"}
 PLATFORMS = {"instagram", "facebook", "linkedin", "youtube", "website", "whatsapp", "email", "other"}
@@ -13,6 +14,7 @@ PLATFORMS = {"instagram", "facebook", "linkedin", "youtube", "website", "whatsap
 class IdeaCreate(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     description: str | None = None
+    campaign_id: UUID | None = None
     content_type: str
     pillar: str | None = None
     audience: str | None = None
@@ -39,6 +41,7 @@ class IdeaCreate(BaseModel):
 class IdeaUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=240)
     description: str | None = None
+    campaign_id: UUID | None = None
     content_type: str | None = None
     pillar: str | None = None
     audience: str | None = None
@@ -59,10 +62,12 @@ class AssetCreate(BaseModel):
     idea_id: UUID | None = None
     asset_type: str
     file_url: str | None = None
+    script: str | None = None
     caption: str | None = None
     copy_text: str | None = None
     version: int = Field(default=1, ge=1)
     status: str = "draft"
+    brand_qa_status: str = "pending"
     owner_user_id: UUID | None = None
     @field_validator("asset_type")
     @classmethod
@@ -74,20 +79,29 @@ class AssetCreate(BaseModel):
     def valid_status(cls, v):
         if v not in ASSET_STATUSES: raise ValueError("Invalid asset status")
         return v
+    @field_validator("brand_qa_status")
+    @classmethod
+    def valid_brand_qa(cls, v):
+        if v not in BRAND_QA_STATUSES: raise ValueError("Invalid brand QA status")
+        return v
 
 class AssetUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=240)
     file_url: str | None = None
+    script: str | None = None
     caption: str | None = None
     copy_text: str | None = None
     version: int | None = Field(default=None, ge=1)
     status: str | None = None
+    brand_qa_status: str | None = None
     owner_user_id: UUID | None = None
 
 class AssetResponse(AssetCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     company_id: UUID
+    approved_by_user_id: UUID | None = None
+    approved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
