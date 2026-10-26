@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_permission
 from app.calendar.models import CalendarEvent, CalendarReminder
-from app.calendar.schemas import CalendarDashboard, CalendarEventCreate, CalendarEventResponse, CalendarEventUpdate, ReminderResponse
+from app.calendar.schemas import CalendarDashboard, CalendarEventCreate, CalendarEventResponse, CalendarEventUpdate, ReminderCreate, ReminderResponse
 from app.clients.models import Client
 from app.core.database import get_db
 from app.freelancers.models import Freelancer
@@ -31,11 +31,7 @@ def _company_record(db: Session, model, company_id: UUID, item_id: UUID | None, 
 
 
 def _validate_links(db: Session, company_id: UUID, values: dict) -> None:
-    for key, model, label in [
-        ("client_id", Client, "client"), ("contact_id", Contact, "contact"), ("prospect_id", Prospect, "prospect"),
-        ("opportunity_id", Opportunity, "opportunity"), ("project_id", Project, "project"),
-        ("freelancer_id", Freelancer, "freelancer"), ("task_id", Task, "task"), ("owner_user_id", User, "owner user"),
-    ]:
+    for key, model, label in [("client_id", Client, "client"), ("contact_id", Contact, "contact"), ("prospect_id", Prospect, "prospect"), ("opportunity_id", Opportunity, "opportunity"), ("project_id", Project, "project"), ("freelancer_id", Freelancer, "freelancer"), ("task_id", Task, "task"), ("owner_user_id", User, "owner user")]:
         _company_record(db, model, company_id, values.get(key), label)
     if values.get("project_id") and values.get("client_id"):
         project = db.scalar(select(Project).where(Project.id == values["project_id"], Project.company_id == company_id))
@@ -79,10 +75,9 @@ def _audit(db: Session, actor: User, action: str, event: CalendarEvent) -> None:
     db.add(AuditLog(actor_user_id=actor.id, action=action, entity_type="CalendarEvent", entity_id=str(event.id), details=event.title))
 
 
-def _create_reminders(db: Session, event: CalendarEvent, reminders: list) -> None:
+def _create_reminders(db: Session, event: CalendarEvent, reminders: list[ReminderCreate]) -> None:
     for reminder in reminders:
-        remind_at = event.start_at - timedelta(minutes=reminder.minutes_before)
-        db.add(CalendarReminder(event_id=event.id, remind_at=remind_at, minutes_before=reminder.minutes_before))
+        db.add(CalendarReminder(event_id=event.id, remind_at=event.start_at - timedelta(minutes=reminder.minutes_before), minutes_before=reminder.minutes_before))
 
 
 @router.get("/dashboard", response_model=CalendarDashboard)
@@ -143,9 +138,7 @@ def update_event(event_id: UUID, payload: CalendarEventUpdate, current_user: Use
     merged = {key: values.get(key, getattr(event, key)) for key in ["owner_user_id", "client_id", "contact_id", "prospect_id", "opportunity_id", "project_id", "freelancer_id", "task_id"]}
     _validate_links(db, current_user.company_id, merged)
     _validate_entity(db, current_user.company_id, values.get("entity_type", event.entity_type), values.get("entity_id", event.entity_id))
-    start_at = values.get("start_at", event.start_at)
-    end_at = values.get("end_at", event.end_at)
-    if end_at <= start_at:
+    if values.get("end_at", event.end_at) <= values.get("start_at", event.start_at):
         raise HTTPException(400, "end_at must be after start_at")
     for key, value in values.items():
         setattr(event, key, value)
@@ -156,12 +149,9 @@ def update_event(event_id: UUID, payload: CalendarEventUpdate, current_user: Use
 
 
 @router.post("/events/{event_id}/reminders", response_model=ReminderResponse, status_code=status.HTTP_201_CREATED)
-def add_reminder(event_id: UUID, payload: object, current_user: User = Depends(require_permission("calendar.reminders.manage")), db: Session = Depends(get_db)):
+def add_reminder(event_id: UUID, payload: ReminderCreate, current_user: User = Depends(require_permission("calendar.reminders.manage")), db: Session = Depends(get_db)):
     event = _event(db, current_user.company_id, event_id)
-    minutes_before = getattr(payload, "minutes_before", None)
-    if minutes_before is None:
-        raise HTTPException(400, "minutes_before is required")
-    reminder = CalendarReminder(event_id=event.id, remind_at=event.start_at - timedelta(minutes=minutes_before), minutes_before=minutes_before)
+    reminder = CalendarReminder(event_id=event.id, remind_at=event.start_at - timedelta(minutes=payload.minutes_before), minutes_before=payload.minutes_before)
     db.add(reminder)
     db.add(AuditLog(actor_user_id=current_user.id, action="calendar.reminder.create", entity_type="CalendarReminder", entity_id=str(reminder.id), details=event.title))
     db.commit()
