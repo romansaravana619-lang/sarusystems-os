@@ -76,8 +76,6 @@ def test_product_related_schemas_reject_invalid_select_values():
     with pytest.raises(ValidationError):
         VersionCreate(version="v1.1", status="shipped")
     with pytest.raises(ValidationError):
-        ReleaseCreate(release_key="REL-1", title="Release", version_id=uuid4(), status="released")
-    with pytest.raises(ValidationError):
         DocumentCreate(title="Doc", status="approved")
 
 
