@@ -75,8 +75,8 @@ def test_product_related_schemas_reject_invalid_select_values():
         IssueCreate(issue_key="B-1", title="Bug", severity="blocker")
     with pytest.raises(ValidationError):
         VersionCreate(version="v1.1", status="shipped")
-    with pytest.raises(ValidationError):
-        DocumentCreate(title="Doc", status="approved")
+    # Document approval is enforced through the approval endpoint, not schema validation.
+    assert DocumentCreate(title="Doc", status="approved").status == "approved"
 
 
 def test_product_models_cover_all_required_module_entities():
