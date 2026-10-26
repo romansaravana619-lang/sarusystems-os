@@ -87,12 +87,28 @@ def update_post(post_id: UUID, p: SocialPostUpdate, current_user: User = Depends
             raise HTTPException(400, "Published posts require content or a creative.")
         if not changes.get("published_at"):
             changes["published_at"] = datetime.now(timezone.utc)
-    if "content_asset_id" in changes and changes["content_asset_id"] is not None:
-        if db.scalar(select(ContentAsset).where(ContentAsset.id == changes["content_asset_id"], ContentAsset.company_id == current_user.company_id)) is None:
-            raise HTTPException(400, "Content asset not found in this company.")
-    if "campaign_id" in changes and changes["campaign_id"] is not None:
-        if db.scalar(select(MarketingCampaign).where(MarketingCampaign.id == changes["campaign_id"], MarketingCampaign.company_id == current_user.company_id)) is None:
-            raise HTTPException(400, "Marketing campaign not found in this company.")
+    if (
+        "content_asset_id" in changes
+        and changes["content_asset_id"] is not None
+        and db.scalar(
+            select(ContentAsset.id).where(
+                ContentAsset.id == changes["content_asset_id"],
+                ContentAsset.company_id == current_user.company_id,
+            )
+        ) is None
+    ):
+        raise HTTPException(400, "Content asset not found in this company.")
+    if (
+        "campaign_id" in changes
+        and changes["campaign_id"] is not None
+        and db.scalar(
+            select(MarketingCampaign.id).where(
+                MarketingCampaign.id == changes["campaign_id"],
+                MarketingCampaign.company_id == current_user.company_id,
+            )
+        ) is None
+    ):
+        raise HTTPException(400, "Marketing campaign not found in this company.")
     for k, v in changes.items():
         setattr(obj, k, v)
     _audit(db, current_user, "social_media.post.update", obj); db.commit(); db.refresh(obj)
