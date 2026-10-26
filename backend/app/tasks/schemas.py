@@ -35,6 +35,7 @@ class TaskUpdate(BaseModel):
     status: str | None = None
     priority: str | None = None
     project_id: UUID | None = None
+    product_id: UUID | None = None
     milestone_id: UUID | None = None
     required_deliverable_id: UUID | None = None
     owner_user_id: UUID | None = None
