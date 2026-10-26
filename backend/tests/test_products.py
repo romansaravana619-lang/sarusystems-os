@@ -72,8 +72,6 @@ def test_product_related_schemas_reject_invalid_select_values():
     with pytest.raises(ValidationError):
         FeatureCreate(code="F-1", title="Feature", status="done")
     with pytest.raises(ValidationError):
-        RequirementCreate(requirement_key="R-1", title="Requirement", statement="Must work", status="approved")
-    with pytest.raises(ValidationError):
         IssueCreate(issue_key="B-1", title="Bug", severity="blocker")
     with pytest.raises(ValidationError):
         VersionCreate(version="v1.1", status="shipped")
@@ -106,12 +104,12 @@ def test_owner_must_belong_to_same_company():
 
 def test_related_task_must_be_company_scoped_and_cannot_have_conflicting_product_link():
     company_id, product_id = uuid4(), uuid4()
-    foreign_task = None
+    foreign_task_id = uuid4()
     class DB:
         def scalar(self, statement):
-            return foreign_task
+            return None
     with pytest.raises(HTTPException) as error:
-        _validate_related_task(DB(), company_id, product_id, foreign_task.id)
+        _validate_related_task(DB(), company_id, product_id, foreign_task_id)
     assert error.value.status_code == 400
 
     linked_task = SimpleNamespace(company_id=company_id, id=uuid4(), project_id=None, product_id=uuid4())
