@@ -204,6 +204,10 @@ def upgrade():
             if already_granted is None:
                 bind.execute(role_permissions.insert().values(role_id=role_id, permission_id=permission_id))
                 grants_created_by_migration.append((role_id, permission_id))
+    bind.info["product_management_rbac"] = {
+        "created_permission_ids": permissions_created_by_migration,
+        "created_grants": grants_created_by_migration,
+    }
 
 
 def downgrade():
@@ -223,23 +227,15 @@ def downgrade():
     op.drop_column("tasks", "product_id")
     for table in ["product_documents", "product_releases", "product_issues", "product_requirements", "product_features", "product_roadmap_items", "product_versions", "products"]:
         op.drop_table(table)
-    # Only remove grants and permissions created by this migration. Any pre-existing
-    # permission or role grant with the same code is preserved on downgrade.
-    permission_codes = [row[0] for row in PERMISSION_ROWS]
+    # Remove only grants and permissions created by this migration run.
     permissions_table = sa.table("permissions", sa.column("id", sa.Uuid()), sa.column("code", sa.String(150)))
     role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
     bind = op.get_bind()
-    ids = [row[0] for row in bind.execute(sa.select(permissions_table.c.id).where(permissions_table.c.code.in_(permission_codes))).all()]
-    created_ids = bind.execute(sa.select(permissions_table.c.id).where(permissions_table.c.code.in_(permission_codes)).where(permissions_table.c.id.in_([]))).all()
-    if ids:
-        # Permission grants are intentionally not bulk-deleted: permissions are shared RBAC
-        # records and may be used by role assignments made after this migration.
-        created_permissions = bind.execute(
-            sa.select(permissions_table.c.id).where(
-                permissions_table.c.code.in_(permission_codes),
-                permissions_table.c.id.in_(created_permission_ids),
-            )
-        ).scalars().all()
-        if created_permission_ids:
-            bind.execute(role_permissions.delete().where(role_permissions.c.permission_id.in_(created_permission_ids)))
-            bind.execute(permissions_table.delete().where(permissions_table.c.id.in_(created_permission_ids)))
+    tracked = bind.info.get("product_management_rbac", {})
+    created_permission_ids = tracked.get("created_permission_ids", [])
+    created_grants = tracked.get("created_grants", [])
+    for role_id, permission_id in created_grants:
+        bind.execute(role_permissions.delete().where(role_permissions.c.role_id == role_id, role_permissions.c.permission_id == permission_id))
+    if created_permission_ids:
+        bind.execute(permissions_table.delete().where(permissions_table.c.id.in_(created_permission_ids)))
+    bind.info.pop("product_management_rbac", None)
