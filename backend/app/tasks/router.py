@@ -9,6 +9,7 @@ from app.auth.dependencies import require_permission
 from app.clients.models import Client
 from app.core.database import get_db
 from app.projects.models import Deliverable, Milestone, Project
+from app.products.models import Product
 from app.shared.models import AuditLog, User
 from app.tasks.models import ChecklistItem, Task, TaskBlocker, TaskDependency
 from app.tasks.schemas import (
@@ -81,6 +82,16 @@ def _validate_client(db: Session, company_id: UUID, client_id: UUID | None) -> N
     client = db.get(Client, client_id)
     if client is None or client.company_id != company_id:
         raise HTTPException(status_code=400, detail="Task client must belong to the company.")
+
+
+def _validate_product(db: Session, company_id: UUID, product_id: UUID | None) -> None:
+    if product_id is None:
+        return
+    product = db.scalar(select(Product).where(Product.id == product_id, Product.company_id == company_id))
+    if product is None:
+        raise HTTPException(status_code=400, detail="Task product must belong to this company.")
+    if product.lifecycle_status in {"deprecated", "archived"}:
+        raise HTTPException(status_code=409, detail="Tasks cannot be assigned to a deprecated or archived product.")
 
 
 def _validate_project_context(
@@ -181,6 +192,18 @@ def list_tasks(current_user: User = Depends(require_permission("tasks.view")), d
     return list(db.scalars(select(Task).where(Task.company_id == current_user.company_id).order_by(Task.due_at.is_(None), Task.due_at, Task.created_at.desc())).all())
 
 
+@router.get("/by-product/{product_id}", response_model=list[TaskResponse])
+def list_product_tasks(product_id: UUID, current_user: User = Depends(require_permission("products.tasks.view")), db: Session = Depends(get_db)) -> list[Task]:
+    _validate_product(db, current_user.company_id, product_id)
+    return list(
+        db.scalars(
+            select(Task)
+            .where(Task.company_id == current_user.company_id, Task.product_id == product_id)
+            .order_by(Task.due_at.is_(None), Task.due_at, Task.created_at.desc())
+        ).all()
+    )
+
+
 @router.get("/workspace", response_model=TaskWorkspaceResponse)
 def task_workspace(current_user: User = Depends(require_permission("tasks.view")), db: Session = Depends(get_db)) -> TaskWorkspaceResponse:
     tasks = list(db.scalars(select(Task).where(Task.company_id == current_user.company_id).order_by(Task.due_at.is_(None), Task.due_at, Task.created_at.desc())).all())
@@ -208,6 +231,7 @@ def create_task(payload: TaskCreate, current_user: User = Depends(require_permis
         raise HTTPException(status_code=409, detail="Create the task first, then use the task workflow to progress it.")
     _validate_owner(db, current_user.company_id, payload.owner_user_id, required=_active_task_required_owner(payload.status))
     _validate_client(db, current_user.company_id, payload.client_id)
+    _validate_product(db, current_user.company_id, payload.product_id)
     _validate_project_context(db, current_user.company_id, payload.project_id, payload.milestone_id, payload.required_deliverable_id, payload.client_id)
     task = Task(company_id=current_user.company_id, **payload.model_dump())
     db.add(task)
@@ -234,6 +258,7 @@ def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends
         _validate_owner(db, current_user.company_id, values["owner_user_id"], required=_active_task_required_owner(target_status))
     elif _active_task_required_owner(target_status):
         _validate_owner(db, current_user.company_id, task.owner_user_id, required=True)
+    _validate_product(db, current_user.company_id, values.get("product_id", task.product_id))
     project_id = values.get("project_id", task.project_id)
     milestone_id = values.get("milestone_id", task.milestone_id)
     deliverable_id = values.get("required_deliverable_id", task.required_deliverable_id)

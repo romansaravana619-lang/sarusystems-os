@@ -12,6 +12,7 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "tasks"
 
     company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    product_id: Mapped[UUID | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"), index=True)
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True)
     milestone_id: Mapped[UUID | None] = mapped_column(ForeignKey("project_milestones.id"), index=True)
     required_deliverable_id: Mapped[UUID | None] = mapped_column(ForeignKey("project_deliverables.id"), index=True)

@@ -16,6 +16,7 @@ class TaskCreate(BaseModel):
     status: str = "backlog"
     priority: str = "medium"
     project_id: UUID | None = None
+    product_id: UUID | None = None
     milestone_id: UUID | None = None
     required_deliverable_id: UUID | None = None
     owner_user_id: UUID | None = None
@@ -34,6 +35,7 @@ class TaskUpdate(BaseModel):
     status: str | None = None
     priority: str | None = None
     project_id: UUID | None = None
+    product_id: UUID | None = None
     milestone_id: UUID | None = None
     required_deliverable_id: UUID | None = None
     owner_user_id: UUID | None = None
@@ -51,6 +53,7 @@ class TaskResponse(BaseModel):
     id: UUID
     company_id: UUID
     project_id: UUID | None
+    product_id: UUID | None
     milestone_id: UUID | None
     required_deliverable_id: UUID | None
     title: str
