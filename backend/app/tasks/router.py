@@ -193,7 +193,7 @@ def list_tasks(current_user: User = Depends(require_permission("tasks.view")), d
 
 
 @router.get("/by-product/{product_id}", response_model=list[TaskResponse])
-def list_product_tasks(product_id: UUID, current_user: User = Depends(require_permission("tasks.view")), db: Session = Depends(get_db)) -> list[Task]:
+def list_product_tasks(product_id: UUID, current_user: User = Depends(require_permission("products.tasks.view")), db: Session = Depends(get_db)) -> list[Task]:
     _validate_product(db, current_user.company_id, product_id)
     return list(
         db.scalars(
