@@ -1,9 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import JSONB
 
 from app.core.database import Base
 from app.shared.models import TimestampMixin, UUIDPrimaryKeyMixin
@@ -24,7 +23,7 @@ class CalendarEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     location: Mapped[str | None] = mapped_column(String(500))
     meeting_url: Mapped[str | None] = mapped_column(String(1000))
     owner_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    attendees: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    attendees: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     client_id: Mapped[UUID | None] = mapped_column(ForeignKey("clients.id"), index=True)
     contact_id: Mapped[UUID | None] = mapped_column(ForeignKey("contacts.id"), index=True)
     prospect_id: Mapped[UUID | None] = mapped_column(ForeignKey("prospects.id"), index=True)
