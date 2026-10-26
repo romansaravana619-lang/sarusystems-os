@@ -275,10 +275,20 @@ def update_requirement(product_id: UUID, requirement_id: UUID, p: RequirementUpd
     if obj is None: raise HTTPException(404,detail="Requirement not found.")
     values=p.model_dump(exclude_unset=True)
     target=values.get("status",obj.status)
-    if target != obj.status and target in {"approved","implemented"}: raise HTTPException(409,detail="Use the requirement approval endpoint before approval or implementation.")
+    if target != obj.status and target in {"approved","implemented"}:
+        raise HTTPException(409,detail="Use the approval or implementation action for this transition.")
     _validate_feature(db,current_user.company_id,product_id,values.get("feature_id",obj.feature_id))
     for k,v in values.items(): setattr(obj,k,v)
     _audit(db,current_user,"product.requirement.update","ProductRequirement",obj.id); db.commit(); db.refresh(obj); return obj
+
+
+@router.post("/{product_id}/requirements/{requirement_id}/implement", response_model=RequirementResponse)
+def implement_requirement(product_id: UUID, requirement_id: UUID, current_user: User = Depends(require_permission("products.requirements.edit")), db: Session = Depends(get_db)):
+    obj=db.scalar(select(ProductRequirement).where(ProductRequirement.id==requirement_id,ProductRequirement.product_id==product_id,ProductRequirement.company_id==current_user.company_id))
+    if obj is None: raise HTTPException(404,detail="Requirement not found.")
+    if obj.status != "approved": raise HTTPException(409,detail="Only approved requirements can be marked implemented.")
+    obj.status="implemented"
+    _audit(db,current_user,"product.requirement.implement","ProductRequirement",obj.id); db.commit(); db.refresh(obj); return obj
 
 
 @router.post("/{product_id}/requirements/{requirement_id}/approve", response_model=RequirementResponse)
@@ -384,6 +394,10 @@ def approve_release(product_id: UUID, release_id: UUID, current_user: User = Dep
     if obj is None: raise HTTPException(404,detail="Release not found.")
     if obj.status != "ready_for_approval": raise HTTPException(409,detail="Release must be ready for approval.")
     version=_record(db,ProductVersion,current_user.company_id,obj.version_id,"Version")
+    if version.product_id != product_id:
+        raise HTTPException(400,detail="Release version must belong to the same product.")
+    if version.status != "ready":
+        raise HTTPException(409,detail="Version must pass development and testing and be ready before release approval.")
     open_issues=db.scalar(select(func.count(ProductIssue.id)).where(ProductIssue.company_id==current_user.company_id,ProductIssue.product_id==product_id,ProductIssue.status.not_in(["verified","closed"]),ProductIssue.severity.in_(["critical","high"]))) or 0
     if open_issues: raise HTTPException(409,detail="Critical/high open product issues must be verified or closed before release.")
     now=datetime.now(timezone.utc); obj.status="released"; obj.released_at=now; obj.approved_at=now; obj.approved_by_user_id=current_user.id
