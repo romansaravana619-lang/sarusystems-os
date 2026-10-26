@@ -186,7 +186,16 @@ def upgrade():
     roles_table = sa.table("roles", sa.column("id", sa.Uuid()), sa.column("name", sa.String(100)))
     role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
     bind = op.get_bind()
-    existing_roles = bind.execute(sa.select(roles_table.c.id)).scalars().all()
+    # Product permissions are granted only to founder/super-admin roles.
+    # Other roles can receive permissions through the existing RBAC workspace.
+    existing_roles = bind.execute(
+        sa.select(roles_table.c.id).where(
+            sa.or_(
+                roles_table.c.name.ilike("%founder%"),
+                roles_table.c.name.ilike("%super admin%"),
+            )
+        )
+    ).scalars().all()
     permissions_created_by_migration = []
     grants_created_by_migration = []
     for code, description in PERMISSION_ROWS:
