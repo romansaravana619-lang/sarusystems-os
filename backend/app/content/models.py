@@ -8,6 +8,7 @@ from app.shared.models import TimestampMixin, UUIDPrimaryKeyMixin
 class ContentIdea(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "content_ideas"
     company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    campaign_id: Mapped[UUID | None] = mapped_column(ForeignKey("marketing_campaigns.id", ondelete="SET NULL"), index=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
@@ -25,11 +26,15 @@ class ContentAsset(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
     file_url: Mapped[str | None] = mapped_column(Text)
+    script: Mapped[str | None] = mapped_column(Text)
     caption: Mapped[str | None] = mapped_column(Text)
     copy_text: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)
+    brand_qa_status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending", index=True)
     owner_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
+    approved_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 class ContentProduction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "content_productions"
