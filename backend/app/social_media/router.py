@@ -54,12 +54,14 @@ def _validate_links(
         )
         if not asset:
             raise HTTPException(400, "Content asset not found in this company.")
-        if new_status in {"scheduled", "published"}:
-            if asset.status != "approved" or asset.brand_qa_status not in {"passed", "not_required"}:
-                raise HTTPException(
-                    409,
-                    "Linked content must be approved and pass brand QA before scheduling or publication.",
-                )
+        if (
+            new_status in {"scheduled", "published"}
+            and (asset.status != "approved" or asset.brand_qa_status not in {"passed", "not_required"})
+        ):
+            raise HTTPException(
+                409,
+                "Linked content must be approved and pass brand QA before scheduling or publication.",
+            )
     if campaign_id is not None and db.scalar(
         select(MarketingCampaign.id).where(
             MarketingCampaign.id == campaign_id,
