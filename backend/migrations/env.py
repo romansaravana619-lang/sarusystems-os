@@ -15,6 +15,7 @@ from app.freelancers import models as freelancer_models  # noqa: F401
 from app.freelancer_work import models as freelancer_work_models  # noqa: F401
 from app.marketing import models as marketing_models  # noqa: F401
 from app.content import models as content_models  # noqa: F401
+from app.social_media import models as social_media_models  # noqa: F401
 config=context.config
 config.set_main_option("sqlalchemy.url",settings.database_url)
 if config.config_file_name is not None: fileConfig(config.config_file_name)
