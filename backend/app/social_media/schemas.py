@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 PLATFORMS = {"instagram", "facebook", "linkedin", "youtube", "website"}
 STATUSES = {"draft", "ready", "scheduled", "published"}
 TRANSITIONS = {"draft": {"ready"}, "ready": {"draft", "scheduled"}, "scheduled": {"ready", "published"}, "published": set()}
+METRIC_FIELDS = ("impressions", "reach", "likes", "comments", "shares", "saves", "clicks", "views")
+
 
 class SocialPostCreate(BaseModel):
     platform: str
@@ -14,19 +16,26 @@ class SocialPostCreate(BaseModel):
     alt_text: str | None = None
     creative_url: str | None = None
     external_link: str | None = None
+    content_asset_id: UUID | None = None
+    campaign_id: UUID | None = None
     status: str = "draft"
     post_date: datetime | None = None
     notes: str | None = None
+
     @field_validator("platform")
     @classmethod
     def valid_platform(cls, v):
-        if v not in PLATFORMS: raise ValueError("Invalid social platform")
+        if v not in PLATFORMS:
+            raise ValueError("Invalid social platform")
         return v
+
     @field_validator("status")
     @classmethod
     def valid_status(cls, v):
-        if v not in STATUSES: raise ValueError("Invalid social post status")
+        if v not in STATUSES:
+            raise ValueError("Invalid social post status")
         return v
+
 
 class SocialPostUpdate(BaseModel):
     post_title: str | None = Field(default=None, max_length=240)
@@ -34,14 +43,20 @@ class SocialPostUpdate(BaseModel):
     alt_text: str | None = None
     creative_url: str | None = None
     external_link: str | None = None
+    content_asset_id: UUID | None = None
+    campaign_id: UUID | None = None
     status: str | None = None
     post_date: datetime | None = None
+    published_at: datetime | None = None
     notes: str | None = None
+
     @field_validator("status")
     @classmethod
     def valid_status(cls, v):
-        if v is not None and v not in STATUSES: raise ValueError("Invalid social post status")
+        if v is not None and v not in STATUSES:
+            raise ValueError("Invalid social post status")
         return v
+
 
 class SocialPerformanceUpdate(BaseModel):
     impressions: int = Field(default=0, ge=0)
@@ -53,12 +68,14 @@ class SocialPerformanceUpdate(BaseModel):
     clicks: int = Field(default=0, ge=0)
     views: int = Field(default=0, ge=0)
 
+
 class SocialPostResponse(SocialPostCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     company_id: UUID
     created_at: datetime
     updated_at: datetime
+    published_at: datetime | None
     impressions: int
     reach: int
     likes: int
@@ -67,6 +84,7 @@ class SocialPostResponse(SocialPostCreate):
     saves: int
     clicks: int
     views: int
+
 
 class SocialDashboard(BaseModel):
     total_posts: int
