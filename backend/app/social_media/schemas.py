@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-PLATFORMS = {"linkedin", "instagram", "facebook", "youtube"}
+PLATFORMS = {"instagram", "facebook", "linkedin", "youtube", "website"}
 STATUSES = {"draft", "ready", "scheduled", "published"}
 TRANSITIONS = {"draft": {"ready"}, "ready": {"draft", "scheduled"}, "scheduled": {"ready", "published"}, "published": set()}
 
