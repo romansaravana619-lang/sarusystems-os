@@ -1,11 +1,11 @@
 name: CI
 
-# 4.15 Documents & Knowledge verification trigger.
+# 4.15 Documents & Knowledge verification.
 on:
   push:
     branches: [main, develop, feature/**]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, feature/**]
 
 jobs:
   backend:
