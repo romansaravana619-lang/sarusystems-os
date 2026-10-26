@@ -36,13 +36,36 @@ export default function ProductManagementPage({token}:{token:string}) {
 
   const [code,setCode]=useState("SS-POS-001"),[name,setName]=useState("Saru POS"),[summary,setSummary]=useState("Restaurant point-of-sale product for billing, tables, inventory and restaurant operations."),[type,setType]=useState("internal"),[lifecycle,setLifecycle]=useState("active"),[currentVersion,setCurrentVersion]=useState("v1.0"),[repoUrl,setRepoUrl]=useState("https://github.com/romansaravana619-lang/Restaurant_POS_System"),[demoUrl,setDemoUrl]=useState(""),[docsUrl,setDocsUrl]=useState(""),[notes,setNotes]=useState("");
   const [roadmapTitle,setRoadmapTitle]=useState(""),[roadmapDesc,setRoadmapDesc]=useState(""),[roadmapCategory,setRoadmapCategory]=useState("feature"),[roadmapPriority,setRoadmapPriority]=useState("medium");
+  const [editingRoadmapId,setEditingRoadmapId]=useState("");
+  const [editingRoadmapTitle,setEditingRoadmapTitle]=useState("");
+  const [editingRoadmapDesc,setEditingRoadmapDesc]=useState("");
   const [featureCode,setFeatureCode]=useState("POS-F-001"),[featureTitle,setFeatureTitle]=useState("Restaurant billing workflow"),[featureDesc,setFeatureDesc]=useState(""),[acceptance,setAcceptance]=useState(""),[featurePriority,setFeaturePriority]=useState("high");
+  const [editingFeatureId,setEditingFeatureId]=useState("");
+  const [editingFeatureTitle,setEditingFeatureTitle]=useState("");
+  const [editingFeatureDesc,setEditingFeatureDesc]=useState("");
+  const [editingFeatureAcceptance,setEditingFeatureAcceptance]=useState("");
   const [reqKey,setReqKey]=useState("POS-REQ-001"),[reqTitle,setReqTitle]=useState("Billing workflow requirement"),[reqStatement,setReqStatement]=useState("Cashier can prepare a bill from selected menu items and complete payment."),[reqCriteria,setReqCriteria]=useState("Bill total matches menu prices; payment is recorded; inventory is updated."),[reqType,setReqType]=useState("functional");
   const [issueKey,setIssueKey]=useState("POS-BUG-001"),[issueTitle,setIssueTitle]=useState(""),[issueDescription,setIssueDescription]=useState(""),[expected,setExpected]=useState(""),[actual,setActual]=useState(""),[repro,setRepro]=useState(""),[severity,setSeverity]=useState("medium"),[issuePriority,setIssuePriority]=useState("medium");
+  const [editingIssueId,setEditingIssueId]=useState("");
+  const [editingIssueTitle,setEditingIssueTitle]=useState("");
+  const [editingIssueDescription,setEditingIssueDescription]=useState("");
+  const [editingIssueExpected,setEditingIssueExpected]=useState("");
+  const [editingIssueActual,setEditingIssueActual]=useState("");
+  const [editingIssueRepro,setEditingIssueRepro]=useState("");
   const [taskTitle,setTaskTitle]=useState(""),[taskDescription,setTaskDescription]=useState(""),[taskOutput,setTaskOutput]=useState(""),[taskPriority,setTaskPriority]=useState("medium");
   const [versionValue,setVersionValue]=useState("v1.1"),[versionName,setVersionName]=useState(""),[versionChangelog,setVersionChangelog]=useState("");
+  const [editingVersionId,setEditingVersionId]=useState("");
+  const [editingVersionName,setEditingVersionName]=useState("");
+  const [editingVersionChangelog,setEditingVersionChangelog]=useState("");
   const [releaseKey,setReleaseKey]=useState("POS-REL-001"),[releaseTitle,setReleaseTitle]=useState(""),[releaseNotes,setReleaseNotes]=useState(""),[releaseVersion,setReleaseVersion]=useState("");
+  const [editingReleaseId,setEditingReleaseId]=useState("");
+  const [editingReleaseTitle,setEditingReleaseTitle]=useState("");
+  const [editingReleaseNotes,setEditingReleaseNotes]=useState("");
   const [docTitle,setDocTitle]=useState(""),[docType,setDocType]=useState("technical"),[docUrl,setDocUrl]=useState(""),[docContent,setDocContent]=useState(""),[docVisibility,setDocVisibility]=useState("internal");
+  const [editingDocumentId,setEditingDocumentId]=useState("");
+  const [editingDocumentTitle,setEditingDocumentTitle]=useState("");
+  const [editingDocumentUrl,setEditingDocumentUrl]=useState("");
+  const [editingDocumentContent,setEditingDocumentContent]=useState("");
 
   const loadProducts=async()=>{const [d,p]=await Promise.all([getProductDashboard(token),getProducts(token)]);setDashboard(d);setProducts(p);setSelected(old=>old&&p.some(x=>x.id===old)?old:(p[0]?.id||""));};
   const loadProduct=async(id:string)=>{if(!id){setRoadmap([]);setFeatures([]);setRequirements([]);setIssues([]);setTasks([]);setVersions([]);setReleases([]);setDocuments([]);return}const data=await Promise.all([getRoadmap(token,id),getFeatures(token,id),getRequirements(token,id),getIssues(token,id),getDevTasks(token,id),getVersions(token,id),getReleases(token,id),getDocuments(token,id)]);setRoadmap(data[0]);setFeatures(data[1]);setRequirements(data[2]);setIssues(data[3]);setTasks(data[4]);setVersions(data[5]);setReleases(data[6]);setDocuments(data[7]);};
