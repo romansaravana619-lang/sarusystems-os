@@ -14,6 +14,8 @@ from app.products.router import (
     VERSION_TRANSITIONS,
     _validate_owner_id,
     _validate_related_task,
+    approve_requirement,
+    approve_release,
 )
 from app.products.schemas import (
     PRODUCT_TYPES,
@@ -116,4 +118,50 @@ def test_related_task_must_be_company_scoped_and_cannot_have_conflicting_product
             return linked_task
     with pytest.raises(HTTPException) as error:
         _validate_related_task(LinkedDB(), company_id, product_id, linked_task.id)
+    assert error.value.status_code == 409
+
+
+def test_requirement_approval_is_only_allowed_from_draft_or_review():
+    product_id, requirement_id, company_id, user_id = uuid4(), uuid4(), uuid4(), uuid4()
+    obj = SimpleNamespace(
+        id=requirement_id,
+        product_id=product_id,
+        company_id=company_id,
+        status="implemented",
+        approved_by_user_id=None,
+        approved_at=None,
+    )
+
+    class DB:
+        def scalar(self, statement):
+            return obj
+
+    user = SimpleNamespace(id=user_id, company_id=company_id)
+    with pytest.raises(HTTPException) as error:
+        approve_requirement(product_id, requirement_id, user, DB())
+    assert error.value.status_code == 409
+
+
+def test_release_approval_requires_version_ready():
+    product_id, release_id, company_id, user_id, version_id = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
+    release = SimpleNamespace(
+        id=release_id,
+        product_id=product_id,
+        company_id=company_id,
+        status="ready_for_approval",
+        version_id=version_id,
+    )
+    version = SimpleNamespace(id=version_id, product_id=product_id, status="testing", version="v1.1")
+
+    class DB:
+        def __init__(self):
+            self.calls = 0
+
+        def scalar(self, statement):
+            self.calls += 1
+            return release if self.calls == 1 else version
+
+    user = SimpleNamespace(id=user_id, company_id=company_id)
+    with pytest.raises(HTTPException) as error:
+        approve_release(product_id, release_id, user, DB())
     assert error.value.status_code == 409
