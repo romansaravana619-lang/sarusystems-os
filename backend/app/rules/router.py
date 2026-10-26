@@ -1,4 +1,3 @@
-import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,17 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_permission
 from app.core.database import get_db
 from app.rules.models import BusinessRule, SOPDefinition
-from app.rules.schemas import (
-    RuleCreate,
-    RuleEvaluateRequest,
-    RuleEvaluateResponse,
-    RuleEvaluation,
-    RuleResponse,
-    RuleUpdate,
-    SOPCreate,
-    SOPResponse,
-    SOPUpdate,
-)
+from app.rules.schemas import RuleCreate, RuleEvaluateRequest, RuleEvaluateResponse, RuleEvaluation, RuleResponse, RuleUpdate, SOPCreate, SOPResponse, SOPUpdate
 from app.shared.models import AuditLog, User
 
 router = APIRouter(prefix="/rules-engine", tags=["sop-business-rules"])
@@ -47,21 +36,17 @@ def _audit(db: Session, actor: User, action: str, entity_type: str, entity_id: U
     db.add(AuditLog(actor_user_id=actor.id, action=action, entity_type=entity_type, entity_id=str(entity_id), details=details))
 
 
-def _json_details(value: object) -> str:
-    return json.dumps(value, default=str)[:4000]
+def _rule_values(values: dict) -> dict:
+    if "allowed_user_ids" in values:
+        values["allowed_user_ids"] = [str(value) for value in values["allowed_user_ids"]]
+    return values
 
 
 @router.get("/dashboard")
 def dashboard(current_user: User = Depends(require_permission("rules_engine.dashboard.view")), db: Session = Depends(get_db)):
     base_sop = SOPDefinition.company_id == current_user.company_id
     base_rule = BusinessRule.company_id == current_user.company_id
-    return {
-        "sops": db.scalar(select(func.count(SOPDefinition.id)).where(base_sop)) or 0,
-        "active_sops": db.scalar(select(func.count(SOPDefinition.id)).where(base_sop, SOPDefinition.status == "active")) or 0,
-        "rules": db.scalar(select(func.count(BusinessRule.id)).where(base_rule)) or 0,
-        "active_rules": db.scalar(select(func.count(BusinessRule.id)).where(base_rule, BusinessRule.status == "active")) or 0,
-        "enforced_rules": db.scalar(select(func.count(BusinessRule.id)).where(base_rule, BusinessRule.is_enforced.is_(True), BusinessRule.status == "active")) or 0,
-    }
+    return {"sops": db.scalar(select(func.count(SOPDefinition.id)).where(base_sop)) or 0, "active_sops": db.scalar(select(func.count(SOPDefinition.id)).where(base_sop, SOPDefinition.status == "active")) or 0, "rules": db.scalar(select(func.count(BusinessRule.id)).where(base_rule)) or 0, "active_rules": db.scalar(select(func.count(BusinessRule.id)).where(base_rule, BusinessRule.status == "active")) or 0, "enforced_rules": db.scalar(select(func.count(BusinessRule.id)).where(base_rule, BusinessRule.is_enforced.is_(True), BusinessRule.status == "active")) or 0}
 
 
 @router.get("/sops", response_model=list[SOPResponse])
@@ -107,7 +92,7 @@ def create_rule(payload: RuleCreate, current_user: User = Depends(require_permis
     for user_id in [*payload.allowed_user_ids, payload.owner_user_id, payload.reviewer_user_id]: _user_check(db, current_user.company_id, user_id)
     if db.scalar(select(BusinessRule.id).where(BusinessRule.company_id == current_user.company_id, BusinessRule.rule_key == payload.rule_key)):
         raise HTTPException(409, "Business rule key already exists.")
-    obj = BusinessRule(company_id=current_user.company_id, **payload.model_dump())
+    obj = BusinessRule(company_id=current_user.company_id, **_rule_values(payload.model_dump()))
     db.add(obj); db.flush(); _audit(db, current_user, "business_rule.create", "BusinessRule", obj.id, obj.rule_key); db.commit(); db.refresh(obj)
     return obj
 
@@ -115,7 +100,7 @@ def create_rule(payload: RuleCreate, current_user: User = Depends(require_permis
 @router.patch("/rules/{rule_id}", response_model=RuleResponse)
 def update_rule(rule_id: UUID, payload: RuleUpdate, current_user: User = Depends(require_permission("rules_engine.rules.edit")), db: Session = Depends(get_db)):
     obj = _rule(db, current_user.company_id, rule_id)
-    values = payload.model_dump(exclude_unset=True)
+    values = _rule_values(payload.model_dump(exclude_unset=True))
     for user_id in [*(values.get("allowed_user_ids") or obj.allowed_user_ids), values.get("owner_user_id", obj.owner_user_id), values.get("reviewer_user_id", obj.reviewer_user_id)]: _user_check(db, current_user.company_id, user_id)
     if values.get("status") == "active":
         conditions = values.get("required_conditions", obj.required_conditions)
