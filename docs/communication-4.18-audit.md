@@ -21,7 +21,7 @@ Implementation status:
 - Critical create/update mutations are audit logged.
 - API tests cover activity type, direction and entity validation contracts.
 
-Acceptance gates:
+Final acceptance:
 - [x] Central communication/activity data model
 - [x] Approved activity categories
 - [x] Connected record relationships
@@ -29,8 +29,8 @@ Acceptance gates:
 - [x] RBAC
 - [x] Audit logging
 - [x] Founder workspace
-- [ ] Final Notion requirement-by-requirement cross-audit
-- [ ] CI GREEN on final head
-- [ ] Final GitHub + Notion completion checkpoints
+- [x] Final Notion requirement-by-requirement cross-audit
+- [x] CI GREEN on final head
+- [x] Final GitHub + Notion completion checkpoints
 
-4.18 remains IN PROGRESS until the final acceptance gates pass. PR must remain open and unmerged.
+4.18 is COMPLETE. PR remains intentionally open and unmerged.
