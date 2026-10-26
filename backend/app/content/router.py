@@ -50,14 +50,7 @@ def dashboard(current_user: User = Depends(require_permission("content.dashboard
     production = list(db.scalars(select(ContentProduction).where(ContentProduction.company_id == cid)).all())
     publications = list(db.scalars(select(ContentPublication).where(ContentPublication.company_id == cid).order_by(ContentPublication.created_at.desc())).all())
     now = datetime.now(timezone.utc)
-    return ContentDashboardResponse(
-        ideas=len(ideas), approved_ideas=sum(x.status == "approved" for x in ideas), in_production_ideas=sum(x.status == "in_production" for x in ideas),
-        assets=len(assets), assets_in_review=sum(x.status == "in_review" for x in assets), approved_assets=sum(x.status == "approved" for x in assets),
-        active_production=sum(x.status == "in_progress" for x in production), revision_production=sum(x.status == "revision" for x in production),
-        scheduled_publications=sum(x.status == "scheduled" for x in publications), published_publications=sum(x.status == "published" for x in publications),
-        overdue_production=sum(x.status not in {"completed", "cancelled"} and x.due_at is not None and x.due_at < now for x in production),
-        by_content_type=dict(Counter(x.content_type for x in ideas)), by_asset_status=dict(Counter(x.status for x in assets)), by_platform=dict(Counter(x.platform for x in publications)), recent_publications=publications[:10]
-    )
+    return ContentDashboardResponse(ideas=len(ideas), approved_ideas=sum(x.status == "approved" for x in ideas), in_production_ideas=sum(x.status == "in_production" for x in ideas), assets=len(assets), assets_in_review=sum(x.status == "in_review" for x in assets), approved_assets=sum(x.status == "approved" for x in assets), active_production=sum(x.status == "in_progress" for x in production), revision_production=sum(x.status == "revision" for x in production), scheduled_publications=sum(x.status == "scheduled" for x in publications), published_publications=sum(x.status == "published" for x in publications), overdue_production=sum(x.status not in {"completed", "cancelled"} and x.due_at is not None and x.due_at < now for x in production), by_content_type=dict(Counter(x.content_type for x in ideas)), by_asset_status=dict(Counter(x.status for x in assets)), by_platform=dict(Counter(x.platform for x in publications)), recent_publications=publications[:10])
 
 @router.get("/ideas", response_model=list[IdeaResponse])
 def list_ideas(current_user: User = Depends(require_permission("content.ideas.view")), db: Session = Depends(get_db)):
@@ -65,10 +58,8 @@ def list_ideas(current_user: User = Depends(require_permission("content.ideas.vi
 
 @router.post("/ideas", response_model=IdeaResponse, status_code=201)
 def create_idea(p: IdeaCreate, current_user: User = Depends(require_permission("content.ideas.create")), db: Session = Depends(get_db)):
-    _campaign(db, current_user.company_id, p.campaign_id)
-    _owner(db, current_user.company_id, p.owner_user_id)
-    obj = ContentIdea(company_id=current_user.company_id, **p.model_dump())
-    db.add(obj); db.flush(); _audit(db, current_user, "content.idea.create", "ContentIdea", obj, obj.title); db.commit(); db.refresh(obj); return obj
+    _campaign(db, current_user.company_id, p.campaign_id); _owner(db, current_user.company_id, p.owner_user_id)
+    obj = ContentIdea(company_id=current_user.company_id, **p.model_dump()); db.add(obj); db.flush(); _audit(db, current_user, "content.idea.create", "ContentIdea", obj, obj.title); db.commit(); db.refresh(obj); return obj
 
 @router.patch("/ideas/{idea_id}", response_model=IdeaResponse)
 def update_idea(idea_id: UUID, p: IdeaUpdate, current_user: User = Depends(require_permission("content.ideas.edit")), db: Session = Depends(get_db)):
@@ -89,8 +80,7 @@ def list_assets(current_user: User = Depends(require_permission("content.assets.
 def create_asset(p: AssetCreate, current_user: User = Depends(require_permission("content.assets.create")), db: Session = Depends(get_db)):
     if p.idea_id: _get(db, ContentIdea, current_user.company_id, p.idea_id, "Content idea")
     _owner(db, current_user.company_id, p.owner_user_id)
-    if p.status == "approved":
-        if p.brand_qa_status != "passed": raise HTTPException(400, "Approved content must pass brand QA first.")
+    if p.status == "approved" and p.brand_qa_status != "passed": raise HTTPException(400, "Approved content must pass brand QA first.")
     obj = ContentAsset(company_id=current_user.company_id, **p.model_dump())
     if obj.status == "approved": obj.approved_by_user_id = current_user.id; obj.approved_at = datetime.now(timezone.utc)
     db.add(obj); db.flush(); _audit(db, current_user, "content.asset.create", "ContentAsset", obj, obj.title); db.commit(); db.refresh(obj); return obj
@@ -100,14 +90,11 @@ def update_asset(asset_id: UUID, p: AssetUpdate, current_user: User = Depends(re
     obj = _get(db, ContentAsset, current_user.company_id, asset_id, "Content asset"); changes = p.model_dump(exclude_unset=True)
     if "status" in changes:
         _transition(obj.status, changes["status"], ASSET_TRANSITIONS)
-        if changes["status"] == "approved" and changes.get("brand_qa_status", obj.brand_qa_status) != "passed":
-            raise HTTPException(400, "Approved content must pass brand QA first.")
-    if "brand_qa_status" in changes and changes["brand_qa_status"] not in BRAND_QA_STATUSES:
-        raise HTTPException(400, "Invalid brand QA status.")
+        if changes["status"] == "approved" and changes.get("brand_qa_status", obj.brand_qa_status) != "passed": raise HTTPException(400, "Approved content must pass brand QA first.")
+    if "brand_qa_status" in changes and changes["brand_qa_status"] not in BRAND_QA_STATUSES: raise HTTPException(400, "Invalid brand QA status.")
     if "owner_user_id" in changes: _owner(db, current_user.company_id, changes["owner_user_id"])
     for k, v in changes.items(): setattr(obj, k, v)
-    if obj.status == "approved" and obj.approved_by_user_id is None:
-        obj.approved_by_user_id = current_user.id; obj.approved_at = datetime.now(timezone.utc)
+    if obj.status == "approved" and obj.approved_by_user_id is None: obj.approved_by_user_id = current_user.id; obj.approved_at = datetime.now(timezone.utc)
     if obj.status != "approved": obj.approved_by_user_id = None; obj.approved_at = None
     _audit(db, current_user, "content.asset.update", "ContentAsset", obj); db.commit(); db.refresh(obj); return obj
 
@@ -122,8 +109,7 @@ def create_production(p: ProductionCreate, current_user: User = Depends(require_
     _owner(db, current_user.company_id, p.producer_user_id)
     if p.status not in PRODUCTION_STATUSES: raise HTTPException(400, "Invalid production status.")
     if p.status != "planned": raise HTTPException(400, "Production must start in planned status.")
-    obj = ContentProduction(company_id=current_user.company_id, **p.model_dump())
-    db.add(obj); db.flush(); _audit(db, current_user, "content.production.create", "ContentProduction", obj); db.commit(); db.refresh(obj); return obj
+    obj = ContentProduction(company_id=current_user.company_id, **p.model_dump()); db.add(obj); db.flush(); _audit(db, current_user, "content.production.create", "ContentProduction", obj); db.commit(); db.refresh(obj); return obj
 
 @router.patch("/production/{production_id}", response_model=ProductionResponse)
 def update_production(production_id: UUID, p: ProductionUpdate, current_user: User = Depends(require_permission("content.production.edit")), db: Session = Depends(get_db)):
@@ -148,8 +134,7 @@ def create_publication(p: PublicationCreate, current_user: User = Depends(requir
     if db.scalar(select(ContentPublication).where(ContentPublication.asset_id == asset.id, ContentPublication.platform == p.platform)): raise HTTPException(409, "This asset is already scheduled for that platform.")
     if p.status not in {"planned", "scheduled"}: raise HTTPException(400, "Publication must start as planned or scheduled.")
     if p.status == "scheduled" and p.scheduled_at is None: raise HTTPException(400, "Scheduled publication requires scheduled_at.")
-    obj = ContentPublication(company_id=current_user.company_id, **p.model_dump())
-    db.add(obj); db.flush(); _audit(db, current_user, "content.publication.create", "ContentPublication", obj); db.commit(); db.refresh(obj); return obj
+    obj = ContentPublication(company_id=current_user.company_id, **p.model_dump()); db.add(obj); db.flush(); _audit(db, current_user, "content.publication.create", "ContentPublication", obj); db.commit(); db.refresh(obj); return obj
 
 @router.patch("/publications/{publication_id}", response_model=PublicationResponse)
 def update_publication(publication_id: UUID, p: PublicationUpdate, current_user: User = Depends(require_permission("content.publications.edit")), db: Session = Depends(get_db)):
