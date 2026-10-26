@@ -46,6 +46,8 @@ def test_product_schema_and_lifecycle_values():
         ProductCreate(code="SS", name="Broken", product_type="unknown")
     with pytest.raises(ValidationError):
         ProductCreate(code="SS", name="Broken", lifecycle_status="live")
+    with pytest.raises(ValidationError):
+        ProductCreate(code="SS-2", name="Bad Product", lifecycle_status="retired")
 
 
 def test_roadmap_lifecycle_has_terminal_done_and_cancelled_states():
@@ -104,7 +106,7 @@ def test_owner_must_belong_to_same_company():
 
 def test_related_task_must_be_company_scoped_and_cannot_have_conflicting_product_link():
     company_id, product_id = uuid4(), uuid4()
-    foreign_task = SimpleNamespace(company_id=uuid4(), id=uuid4(), project_id=None, product_id=None)
+    foreign_task = None
     class DB:
         def scalar(self, statement):
             return foreign_task
