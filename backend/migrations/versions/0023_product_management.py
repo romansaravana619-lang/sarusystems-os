@@ -227,15 +227,18 @@ def downgrade():
     op.drop_column("tasks", "product_id")
     for table in ["product_documents", "product_releases", "product_issues", "product_requirements", "product_features", "product_roadmap_items", "product_versions", "products"]:
         op.drop_table(table)
-    # Remove only grants and permissions created by this migration run.
-    permissions_table = sa.table("permissions", sa.column("id", sa.Uuid()), sa.column("code", sa.String(150)))
-    role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
+    # Preserve shared permission grants on downgrade. RBAC permissions are
+    # intentionally retained rather than deleting records that may have since
+    # been assigned or referenced by other roles.
     bind = op.get_bind()
     tracked = bind.info.get("product_management_rbac", {})
-    created_permission_ids = tracked.get("created_permission_ids", [])
     created_grants = tracked.get("created_grants", [])
+    role_permissions = sa.table("role_permissions", sa.column("role_id", sa.Uuid()), sa.column("permission_id", sa.Uuid()))
     for role_id, permission_id in created_grants:
-        bind.execute(role_permissions.delete().where(role_permissions.c.role_id == role_id, role_permissions.c.permission_id == permission_id))
-    if created_permission_ids:
-        bind.execute(permissions_table.delete().where(permissions_table.c.id.in_(created_permission_ids)))
+        bind.execute(
+            role_permissions.delete().where(
+                role_permissions.c.role_id == role_id,
+                role_permissions.c.permission_id == permission_id,
+            )
+        )
     bind.info.pop("product_management_rbac", None)
