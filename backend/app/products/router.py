@@ -104,7 +104,9 @@ def _validate_related_task(db: Session, company_id: UUID, product_id: UUID, task
         project = db.scalar(select(Project).where(Project.id == task.project_id, Project.company_id == company_id))
         if project is None:
             raise HTTPException(status_code=400, detail="Development task project must belong to this company.")
-    task.product_id = product_id
+    if task.product_id is None:
+        task.product_id = product_id
+        db.add(AuditLog(actor_user_id=None, action="task.product.link", entity_type="Task", entity_id=str(task.id), details=f"Linked to product {product_id}"))
 
 
 def _validate_feature(db: Session, company_id: UUID, product_id: UUID, feature_id: UUID | None) -> None:
