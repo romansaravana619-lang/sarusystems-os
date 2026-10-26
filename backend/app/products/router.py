@@ -25,7 +25,6 @@ from app.products.schemas import (
 from app.shared.models import AuditLog, User
 from app.tasks.models import Task
 from app.projects.models import Project
-from app.tasks.router import _validate_owner
 
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -99,11 +98,13 @@ def _validate_related_task(db: Session, company_id: UUID, product_id: UUID, task
     task = db.scalar(select(Task).where(Task.id == task_id, Task.company_id == company_id))
     if task is None:
         raise HTTPException(status_code=400, detail="Development task must belong to this company.")
+    if task.product_id not in {None, product_id}:
+        raise HTTPException(status_code=409, detail="Development task is already linked to another product.")
     if task.project_id is not None:
         project = db.scalar(select(Project).where(Project.id == task.project_id, Project.company_id == company_id))
         if project is None:
             raise HTTPException(status_code=400, detail="Development task project must belong to this company.")
-    task.notes = (task.notes or "")[:3500] + f"\n[Product link: {product_id}]"
+    task.product_id = product_id
 
 
 def _validate_feature(db: Session, company_id: UUID, product_id: UUID, feature_id: UUID | None) -> None:
@@ -150,12 +151,12 @@ def dashboard(current_user: User = Depends(require_permission("products.dashboar
     product_ids = [p.id for p in products]
     if not product_ids:
         return ProductDashboardResponse(total_products=0, active_products=0, roadmap_items=0, open_issues=0, in_progress_features=0, released_versions=0, planned_releases=0, recent_products=[])
-    count = lambda model, *criteria: db.scalar(select(func.count(model.id)).where(model.company_id == current_user.company_id, *criteria)) or 0
+    count = lambda model, *criteria: db.scalar(select(func.count(model.id)).where(model.company_id == current_user.company_id, model.product_id.in_(product_ids), *criteria)) or 0
     return ProductDashboardResponse(
         total_products=len(products),
         active_products=sum(p.lifecycle_status in {"active", "maintenance"} for p in products),
         roadmap_items=count(ProductRoadmapItem),
-        open_issues=db.scalar(select(func.count(ProductIssue.id)).where(ProductIssue.company_id == current_user.company_id, ProductIssue.status.not_in(["verified", "closed"]))) or 0,
+        open_issues=db.scalar(select(func.count(ProductIssue.id)).where(ProductIssue.company_id == current_user.company_id, ProductIssue.product_id.in_(product_ids), ProductIssue.status.not_in(["verified", "closed"]))) or 0,
         in_progress_features=count(ProductFeature, ProductFeature.status == "in_progress"),
         released_versions=count(ProductVersion, ProductVersion.status == "released"),
         planned_releases=count(ProductRelease, ProductRelease.status.not_in(["released", "cancelled", "rolled_back"])),
