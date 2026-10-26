@@ -1,5 +1,6 @@
 name: CI
 
+# 4.15 Documents & Knowledge verification trigger.
 on:
   push:
     branches: [main, develop, feature/**]
