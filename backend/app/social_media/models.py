@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 from app.shared.models import TimestampMixin, UUIDPrimaryKeyMixin
@@ -18,4 +18,12 @@ class SocialPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)
     post_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     notes: Mapped[str | None] = mapped_column(Text)
+    impressions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reach: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    likes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    comments: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    shares: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    saves: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     __table_args__ = (UniqueConstraint("company_id", "platform", "post_id", name="uq_social_post_identity"),)
