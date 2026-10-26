@@ -19,7 +19,7 @@ from app.social_media.schemas import (
 
 
 def test_social_platforms_match_approved_module():
-    assert PLATFORMS == {"instagram", "facebook", "linkedin", "youtube", "website"}
+    assert PLATFORMS == {"instagram", "facebook", "linkedin", "x", "youtube", "website"}
 
 
 def test_social_lifecycle():
