@@ -53,9 +53,15 @@ def list_posts(current_user: User = Depends(require_permission("social_media.pos
 def create_post(p: SocialPostCreate, current_user: User = Depends(require_permission("social_media.posts.create")), db: Session = Depends(get_db)):
     if db.scalar(select(SocialPost).where(SocialPost.company_id == current_user.company_id, SocialPost.platform == p.platform, SocialPost.post_id == p.post_id)):
         raise HTTPException(409, "A post with this platform and Post ID already exists.")
-    _validate_links(db, current_user.company_id, p.content_asset_id, p.campaign_id)
-    if p.status == "scheduled" and not p.post_date:
-        raise HTTPException(400, "Scheduled posts require a publishing date.")
+    if db.scalar(select(ContentAsset).where(ContentAsset.id == p.content_asset_id, ContentAsset.company_id == current_user.company_id)) is None and p.content_asset_id is not None:
+        raise HTTPException(400, "Content asset not found in this company.")
+    if p.campaign_id is not None and db.scalar(select(MarketingCampaign).where(MarketingCampaign.id == p.campaign_id, MarketingCampaign.company_id == current_user.company_id)) is None:
+        raise HTTPException(400, "Marketing campaign not found in this company.")
+    if p.status == "scheduled":
+        if not p.post_date:
+            raise HTTPException(400, "Scheduled posts require a publishing date.")
+        if p.post_date <= datetime.now(timezone.utc):
+            raise HTTPException(400, "Publishing date must be in the future.")
     if p.status == "published":
         raise HTTPException(409, "Create posts as draft or ready; use the publishing workflow to mark a post published.")
     obj = SocialPost(company_id=current_user.company_id, **p.model_dump())
@@ -81,8 +87,12 @@ def update_post(post_id: UUID, p: SocialPostUpdate, current_user: User = Depends
             raise HTTPException(400, "Published posts require content or a creative.")
         if not changes.get("published_at"):
             changes["published_at"] = datetime.now(timezone.utc)
-    if "content_asset_id" in changes or "campaign_id" in changes:
-        _validate_links(db, current_user.company_id, changes.get("content_asset_id", obj.content_asset_id), changes.get("campaign_id", obj.campaign_id))
+    if "content_asset_id" in changes and changes["content_asset_id"] is not None:
+        if db.scalar(select(ContentAsset).where(ContentAsset.id == changes["content_asset_id"], ContentAsset.company_id == current_user.company_id)) is None:
+            raise HTTPException(400, "Content asset not found in this company.")
+    if "campaign_id" in changes and changes["campaign_id"] is not None:
+        if db.scalar(select(MarketingCampaign).where(MarketingCampaign.id == changes["campaign_id"], MarketingCampaign.company_id == current_user.company_id)) is None:
+            raise HTTPException(400, "Marketing campaign not found in this company.")
     for k, v in changes.items():
         setattr(obj, k, v)
     _audit(db, current_user, "social_media.post.update", obj); db.commit(); db.refresh(obj)
