@@ -58,6 +58,6 @@ def search(q: str, limit: int = 20, entity_type: str | None = None, current_user
     add("contact", [_result("contact", x.id, x.name, x.company_name or x.email) for x in db.scalars(select(Contact).where(Contact.company_id == company_id, _match(Contact.name, Contact.company_name, Contact.email, Contact.phone, Contact.notes, q)).limit(limit)).all()])
 
     results = results[:limit]
-    db.add(AuditLog(actor_user_id=current_user.id, action="global_search", entity_type="global_search", entity_id=None, entity_id=None, details=f"query={q[:120]} results={len(results)}"))
+    db.add(AuditLog(actor_user_id=current_user.id, action="global_search", entity_type="global_search", entity_id=None, details=f"query={q[:120]} results={len(results)}"))
     db.commit()
     return {"query": q, "count": len(results), "results": results}
