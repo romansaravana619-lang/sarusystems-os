@@ -1,5 +1,5 @@
 import app
 from pathlib import Path
 
-print(f"DEBUG_APP_PATH={list(app.__path__)}")
-print(f"DEBUG_APP_CHILDREN={[str(p) for root in app.__path__ for p in sorted(Path(root).iterdir())]}")
+roots = [Path(p) for p in app.__path__]
+raise RuntimeError(f"DEBUG_APP_PATH={roots}; ROOT_CONTENTS={[sorted(p.name for p in root.iterdir()) if root.exists() else 'missing' for root in roots]}")
