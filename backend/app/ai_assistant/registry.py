@@ -1,6 +1,6 @@
 """Explicit allow-list and contracts for AI-callable SaruSystems OS tools."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .contracts import AIActionKind
@@ -13,16 +13,16 @@ class AIToolDefinition:
     name: str
     purpose: str
     action_kind: AIActionKind
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
     required_permission: str | None
     allowed_entities: tuple[str, ...]
-    validation_rules: tuple[str, ...]
-    business_rule_requirements: tuple[str, ...]
     requires_confirmation: bool
-    audit_event: str
-    failure_behavior: tuple[str, ...]
-    use_case_key: str
+    input_schema: dict[str, Any] = field(default_factory=lambda: {"type": "object", "additionalProperties": False})
+    output_schema: dict[str, Any] = field(default_factory=lambda: {"type": "object"})
+    validation_rules: tuple[str, ...] = ()
+    business_rule_requirements: tuple[str, ...] = ()
+    audit_event: str = "ai.tool.unclassified"
+    failure_behavior: tuple[str, ...] = ()
+    use_case_key: str = ""
     handler: Callable[..., Any] | None = None
 
 
