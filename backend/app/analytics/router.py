@@ -12,8 +12,9 @@ from app.crm.schemas import PROSPECT_STATUSES
 from app.finance.models import FinancialTransaction, PaymentMilestone
 from app.freelancers.models import Freelancer, FreelancerAssignment, FreelancerPerformance
 from app.marketing.models import CampaignMetric, MarketingCampaign, CampaignProspect
-from app.projects.models import Project, ProjectRisk, Milestone
-from app.shared.models import Notification, Opportunity, Prospect, User
+from app.notifications.models import Notification
+from app.projects.models import Milestone, Project, ProjectRisk
+from app.shared.models import Opportunity, Prospect, User
 from app.social_media.models import SocialPost
 from app.tasks.models import Task
 
@@ -23,10 +24,6 @@ PERMISSION = "analytics.dashboard.view"
 
 def _count(db: Session, model, company_id, *conditions) -> int:
     return int(db.scalar(select(func.count()).select_from(model).where(model.company_id == company_id, *conditions)) or 0)
-
-
-def _sum(db: Session, column, company_id, *conditions) -> Decimal:
-    return db.scalar(select(func.coalesce(func.sum(column), 0)).where(column.table.c.company_id == company_id, *conditions)) or Decimal("0")
 
 
 def _sales(db: Session, company_id):
@@ -52,9 +49,9 @@ def _projects(db: Session, company_id):
     now = datetime.now(timezone.utc)
     active = _count(db, Project, company_id, Project.status.notin_({"completed", "cancelled", "closed"}))
     completed = _count(db, Project, company_id, Project.status.in_({"completed", "closed"}))
-    overdue = _count(db, Project, company_id, Project.target_end_at < now, Project.status.notin_({"completed", "cancelled", "closed"}))
-    risks = _count(db, ProjectRisk, company_id, ProjectRisk.status == "open")
-    milestones_due = _count(db, Milestone, company_id, Milestone.due_at < now, Milestone.status.notin_({"completed", "approved"}))
+    overdue = _count(db, Project, company_id, Project.target_end_at.is_not(None), Project.target_end_at < now, Project.status.notin_({"completed", "cancelled", "closed"}))
+    risks = int(db.scalar(select(func.count()).select_from(ProjectRisk).join(Project, Project.id == ProjectRisk.project_id).where(Project.company_id == company_id, ProjectRisk.status == "open")) or 0)
+    milestones_due = int(db.scalar(select(func.count()).select_from(Milestone).join(Project, Project.id == Milestone.project_id).where(Project.company_id == company_id, Milestone.due_at.is_not(None), Milestone.due_at < now, Milestone.status.notin_({"completed", "approved"}))) or 0)
     return {"active": active, "completed": completed, "overdue": overdue, "open_risks": risks, "overdue_milestones": milestones_due}
 
 
@@ -70,7 +67,7 @@ def _marketing(db: Session, company_id):
     campaigns = _count(db, MarketingCampaign, company_id)
     active = _count(db, MarketingCampaign, company_id, MarketingCampaign.status.in_({"active", "running"}))
     metrics = db.execute(select(func.coalesce(func.sum(CampaignMetric.impressions), 0), func.coalesce(func.sum(CampaignMetric.reach), 0), func.coalesce(func.sum(CampaignMetric.clicks), 0), func.coalesce(func.sum(CampaignMetric.leads), 0), func.coalesce(func.sum(CampaignMetric.conversions), 0), func.coalesce(func.sum(CampaignMetric.spend), 0), func.coalesce(func.sum(CampaignMetric.revenue), 0)).join(MarketingCampaign, MarketingCampaign.id == CampaignMetric.campaign_id).where(MarketingCampaign.company_id == company_id)).one()
-    attributed = _count(db, CampaignProspect, company_id) if hasattr(CampaignProspect, "company_id") else int(db.scalar(select(func.count()).select_from(CampaignProspect).join(MarketingCampaign, MarketingCampaign.id == CampaignProspect.campaign_id).where(MarketingCampaign.company_id == company_id)) or 0)
+    attributed = int(db.scalar(select(func.count()).select_from(CampaignProspect).join(MarketingCampaign, MarketingCampaign.id == CampaignProspect.campaign_id).where(MarketingCampaign.company_id == company_id)) or 0)
     impressions, reach, clicks, leads, conversions, spend, revenue = metrics
     return {"campaigns": campaigns, "active_campaigns": active, "impressions": int(impressions), "reach": int(reach), "clicks": int(clicks), "leads": int(leads), "conversions": int(conversions), "spend": float(spend), "revenue": float(revenue), "roas": round(float(revenue / spend), 2) if spend else 0.0, "attributed_prospects": attributed}
 
@@ -95,7 +92,8 @@ def dashboard(current_user: User = Depends(require_permission(PERMISSION)), db: 
     freelancers = _freelancers(db, company_id)
     marketing = _marketing(db, company_id)
     content = _content(db, company_id)
-    overdue_tasks = _count(db, Task, company_id, Task.due_at < datetime.now(timezone.utc), Task.status.notin_({"completed", "done", "cancelled"}))
+    now = datetime.now(timezone.utc)
+    overdue_tasks = _count(db, Task, company_id, Task.due_at.is_not(None), Task.due_at < now, Task.status.notin_({"completed", "done", "cancelled"}))
     unread_notifications = _count(db, Notification, company_id, Notification.recipient_user_id == current_user.id, Notification.status == "unread")
     health = {"active_projects": projects["active"], "overdue_work": overdue_tasks + projects["overdue"], "open_risks": projects["open_risks"], "outstanding_payments": revenue["outstanding"], "unread_notifications": unread_notifications}
     return {"business_health": health, "sales": sales, "revenue": revenue, "projects": projects, "freelancers": freelancers, "marketing": marketing, "content": content}
