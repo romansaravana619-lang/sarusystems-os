@@ -1,7 +1,8 @@
-import app
-import importlib.util
-from pathlib import Path
+import importlib
 
-roots = [Path(p) for p in app.__path__]
-fw = roots[0] / "freelancer_work"
-raise RuntimeError(f"DEBUG_APP_PATH={roots}; FW_EXISTS={fw.exists()}; FW_CONTENTS={[p.name for p in fw.iterdir()] if fw.exists() else 'missing'}; FW_SPEC={importlib.util.find_spec('app.freelancer_work')}")
+try:
+    pkg = importlib.import_module("app.freelancer_work")
+    router_mod = importlib.import_module("app.freelancer_work.router")
+    raise RuntimeError(f"DEBUG_IMPORT_OK pkg={pkg!r} router={router_mod!r}")
+except Exception as exc:
+    raise RuntimeError(f"DEBUG_IMPORT_ERROR type={type(exc).__name__} repr={exc!r}") from exc
