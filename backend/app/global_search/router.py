@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ def _result(kind: str, record_id: UUID, title: str, subtitle: str | None = None,
 def search(
     q: str = Query(min_length=2, max_length=120),
     limit: int = Query(default=20, ge=1, le=MAX_LIMIT),
-    entity_type: str | None = Query(default=None, pattern="^[a-z_]+$"),
+    entity_type: str | None = Query(default=None, min_length=1, max_length=50),
     current_user=Depends(require_permission(PERMISSION)),
     db: Session = Depends(get_db),
 ):
@@ -37,8 +37,10 @@ def search(
     from app.shared.models import AuditLog, Contact, Opportunity, Prospect
     from app.tasks.models import Task
 
-    company_id = current_user.company_id
     requested = entity_type.lower() if entity_type else None
+    if requested and (not requested.replace("_", "").isalnum() or any(char.isupper() for char in requested)):
+        raise HTTPException(status_code=422, detail="Invalid entity_type")
+    company_id = current_user.company_id
     results = []
 
     def add(kind: str, rows):
