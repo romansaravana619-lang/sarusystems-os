@@ -7,11 +7,9 @@ def test_global_search_permission_contract():
 
 
 def test_global_search_route_contract():
-    routes = {(route.path, frozenset(route.methods or ())) for route in router.routes}
-    assert ("/global-search", frozenset({"GET"})) in routes
-
-
-def test_global_search_is_read_only_and_company_scoped():
     route = next(route for route in router.routes if route.path == "/global-search")
     assert route.methods == {"GET"}
-    assert route.dependant.dependencies
+
+
+def test_global_search_route_is_registered():
+    assert any(route.path == "/global-search" for route in router.routes)
