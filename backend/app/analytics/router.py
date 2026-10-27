@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_permission
 from app.content.models import ContentAsset, ContentPublication
 from app.core.database import get_db
-from app.crm.schemas import PROSPECT_STATUSES
 from app.finance.models import FinancialTransaction, PaymentMilestone
 from app.freelancers.models import Freelancer, FreelancerAssignment, FreelancerPerformance
 from app.marketing.models import CampaignMetric, MarketingCampaign, CampaignProspect
