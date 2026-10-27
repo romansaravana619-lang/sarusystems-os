@@ -12,12 +12,12 @@ from app.crm.router import router as crm_router
 from app.finance.router import router as finance_router
 from app.freelancers.router import router as freelancers_router
 from app.freelancers.workflow_router import router as freelancer_workflow_router
-from app.freelancer_work.router import router as freelancer_work_router
 from app.marketing.router import router as marketing_router
 from app.content.router import router as content_router
 from app.social_media.router import router as social_media_router
 from app.products.router import router as products_router
 from app.documents.router import router as documents_router
+from app.global_search.router import router as global_search_router
 from app.rules.router import router as rules_engine_router
 from app.projects.router import router as projects_router
 from app.roles.router import router as roles_router
@@ -30,7 +30,8 @@ from app.notifications.router import router as notifications_router
 
 app = FastAPI(title=settings.app_name, version=settings.app_version, description="Founder operating system for Saru Systems.")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
-app.include_router(auth_router); app.include_router(users_router); app.include_router(roles_router); app.include_router(audit_router); app.include_router(command_center_router); app.include_router(company_router); app.include_router(crm_router); app.include_router(sales_router); app.include_router(clients_router); app.include_router(services_router); app.include_router(projects_router); app.include_router(tasks_router); app.include_router(freelancer_work_router); app.include_router(freelancer_workflow_router); app.include_router(freelancers_router); app.include_router(marketing_router); app.include_router(content_router); app.include_router(social_media_router); app.include_router(products_router); app.include_router(documents_router); app.include_router(rules_engine_router); app.include_router(finance_router); app.include_router(communication_router); app.include_router(calendar_router); app.include_router(notifications_router); app.include_router(analytics_router)
+from app.freelancer_work.router import router as freelancer_work_router
+app.include_router(auth_router); app.include_router(users_router); app.include_router(roles_router); app.include_router(audit_router); app.include_router(command_center_router); app.include_router(company_router); app.include_router(crm_router); app.include_router(sales_router); app.include_router(clients_router); app.include_router(services_router); app.include_router(projects_router); app.include_router(tasks_router); app.include_router(freelancer_work_router); app.include_router(freelancer_workflow_router); app.include_router(freelancers_router); app.include_router(marketing_router); app.include_router(content_router); app.include_router(social_media_router); app.include_router(products_router); app.include_router(documents_router); app.include_router(rules_engine_router); app.include_router(finance_router); app.include_router(communication_router); app.include_router(calendar_router); app.include_router(notifications_router); app.include_router(analytics_router); app.include_router(global_search_router)
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]: return {"status": "ok"}
 @app.get("/ready", tags=["system"])
