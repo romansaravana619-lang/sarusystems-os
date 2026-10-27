@@ -27,9 +27,15 @@ dev = [
   "ruff>=0.9,<1.0",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["app", "app.*"]
+[tool.setuptools]
+packages = [
+  "app", "app.analytics", "app.audit", "app.auth", "app.calendar", "app.clients",
+  "app.command_center", "app.communication", "app.company", "app.content", "app.core",
+  "app.crm", "app.documents", "app.finance", "app.freelancer_work", "app.freelancers",
+  "app.global_search", "app.marketing", "app.notifications", "app.products", "app.projects",
+  "app.roles", "app.rules", "app.sales", "app.services", "app.shared", "app.social_media",
+  "app.tasks", "app.users",
+]
 
 [tool.ruff]
 line-length = 100
