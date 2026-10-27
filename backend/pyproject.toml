@@ -29,7 +29,7 @@ dev = [
 
 [tool.setuptools]
 packages = [
-  "app", "app.analytics", "app.audit", "app.auth", "app.calendar", "app.clients",
+  "app", "app.ai_assistant", "app.analytics", "app.audit", "app.auth", "app.calendar", "app.clients",
   "app.command_center", "app.communication", "app.company", "app.content", "app.core",
   "app.crm", "app.documents", "app.finance", "app.freelancer_work", "app.freelancers",
   "app.global_search", "app.marketing", "app.notifications", "app.products", "app.projects",
