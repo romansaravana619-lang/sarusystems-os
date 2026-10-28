@@ -135,7 +135,7 @@ class AISafetyPolicy:
             consumed=True,
         )
         self._tickets[confirmation_id] = consumed_ticket
-        return AISafetyDecision(False, True, "confirmation_validated", ticket=consumed_ticket)
+        return AISafetyDecision(True, True, "confirmation_validated", ticket=consumed_ticket)
 
     def authorize_write_execution(
         self,
