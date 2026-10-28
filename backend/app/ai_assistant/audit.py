@@ -1,97 +1,100 @@
-"""Audit boundary for AI Company Assistant actions."""
+"""Audit boundary for meaningful AI Company Assistant activity.
 
-from __future__ import annotations
+This module records structured AI audit context through the existing OS AuditLog
+model. It deliberately contains no provider-specific logic and never stores
+provider credentials or unnecessary secrets.
+"""
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import json
 from typing import Any, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
+
+from app.shared.models import AuditLog
 
 
-@dataclass(frozen=True)
-class AIAuditContext:
+class AuditSession(Protocol):
+    def add(self, instance: AuditLog) -> None: ...
+
+    def flush(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AIAuditEvent:
+    """Minimum traceable context required for a meaningful AI action."""
+
     user_id: UUID
     company_id: UUID
     request_id: UUID
     user_request: str
-    normalized_intent: str
+    normalized_intent: str | None
     tool_name: str
     target_entity_type: str | None = None
     target_entity_id: UUID | None = None
-    input_metadata: dict[str, Any] = field(default_factory=dict)
-    permission_decision: str = "not_evaluated"
-    business_rule_decision: str = "not_evaluated"
-    confirmation_state: str = "not_required"
-    execution_result: str = "not_executed"
+    action_metadata: dict[str, Any] = field(default_factory=dict)
+    permission_decision: str | None = None
+    business_rule_decision: str | None = None
+    confirmation_state: str | None = None
+    execution_result: str | None = None
     resulting_record_ids: tuple[UUID, ...] = ()
-    error_code: str | None = None
+    failure_error: str | None = None
+    read_only: bool = False
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-
-@dataclass(frozen=True)
-class AIAuditRecord:
-    audit_reference: str
-    context: AIAuditContext
-
-
-class AIAuditSink(Protocol):
-    def record(self, context: AIAuditContext) -> AIAuditRecord:
-        """Persist through the authoritative OS audit boundary."""
-
-
-class AIAuditPolicy:
-    """Validate and forward AI audit context without provider-specific data."""
-
-    def __init__(self, sink: AIAuditSink) -> None:
-        self._sink = sink
-
-    def record(self, context: AIAuditContext) -> AIAuditRecord:
-        if not context.user_request.strip():
-            raise ValueError("user_request must not be empty")
-        if not context.normalized_intent.strip():
-            raise ValueError("normalized_intent must not be empty")
-        if not context.tool_name.strip():
-            raise ValueError("tool_name must not be empty")
-        if context.target_entity_id is not None and not context.target_entity_type:
-            raise ValueError("target_entity_type is required when target_entity_id is set")
-        return self._sink.record(context)
+    def to_details(self) -> str:
+        """Serialize safe audit metadata without secrets or provider credentials."""
+        payload = {
+            "audit_version": 1,
+            "company_id": str(self.company_id),
+            "request_id": str(self.request_id),
+            "timestamp": self.timestamp.isoformat(),
+            "user_request": self.user_request,
+            "normalized_intent": self.normalized_intent,
+            "tool_name": self.tool_name,
+            "target_entity_type": self.target_entity_type,
+            "target_entity_id": str(self.target_entity_id) if self.target_entity_id else None,
+            "action_metadata": self.action_metadata,
+            "permission_decision": self.permission_decision,
+            "business_rule_decision": self.business_rule_decision,
+            "confirmation_state": self.confirmation_state,
+            "execution_result": self.execution_result,
+            "resulting_record_ids": [str(value) for value in self.resulting_record_ids],
+            "failure_error": self.failure_error,
+            "read_only": self.read_only,
+        }
+        return json.dumps(payload, separators=(",", ":"), default=str)
 
 
-def record_ai_audit(
-    sink: AIAuditSink,
-    *,
-    user_id: UUID,
-    company_id: UUID,
-    request_id: UUID,
-    user_request: str,
-    normalized_intent: str,
-    tool_name: str,
-    target_entity_type: str | None = None,
-    target_entity_id: UUID | None = None,
-    input_metadata: dict[str, Any] | None = None,
-    permission_decision: str = "not_evaluated",
-    business_rule_decision: str = "not_evaluated",
-    confirmation_state: str = "not_required",
-    execution_result: str = "not_executed",
-    resulting_record_ids: tuple[UUID, ...] = (),
-    error_code: str | None = None,
-) -> AIAuditRecord:
-    """Record a minimal, provider-neutral AI audit event."""
-    context = AIAuditContext(
-        user_id=user_id,
-        company_id=company_id,
-        request_id=request_id,
-        user_request=user_request,
-        normalized_intent=normalized_intent,
-        tool_name=tool_name,
-        target_entity_type=target_entity_type,
-        target_entity_id=target_entity_id,
-        input_metadata=dict(input_metadata or {}),
-        permission_decision=permission_decision,
-        business_rule_decision=business_rule_decision,
-        confirmation_state=confirmation_state,
-        execution_result=execution_result,
-        resulting_record_ids=resulting_record_ids,
-        error_code=error_code,
-    )
-    return AIAuditPolicy(sink).record(context)
+class AIAuditRecorder:
+    """Persist AI audit events through the existing AuditLog boundary."""
+
+    ACTION = "ai_assistant"
+    ENTITY_TYPE = "ai_request"
+
+    def record(self, db: AuditSession, event: AIAuditEvent) -> str:
+        audit_reference = str(uuid4())
+        audit_log = AuditLog(
+            actor_user_id=event.user_id,
+            action=self.ACTION,
+            entity_type=self.ENTITY_TYPE,
+            entity_id=str(event.request_id),
+            details=self._bounded_details(event, audit_reference),
+        )
+        db.add(audit_log)
+        db.flush()
+        return audit_reference
+
+    @staticmethod
+    def _bounded_details(event: AIAuditEvent, audit_reference: str) -> str:
+        details = json.loads(event.to_details())
+        details["audit_reference"] = audit_reference
+        serialized = json.dumps(details, separators=(",", ":"), default=str)
+        if len(serialized) > 4000:
+            raise ValueError("AI audit metadata exceeds the AuditLog details limit")
+        return serialized
+
+
+def record_ai_audit(db: AuditSession, event: AIAuditEvent) -> str:
+    """Convenience entry point for AI orchestration and tool execution layers."""
+    return AIAuditRecorder().record(db, event)
