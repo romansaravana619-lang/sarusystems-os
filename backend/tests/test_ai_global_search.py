@@ -11,11 +11,21 @@ from app.ai_assistant.global_search import (
 
 
 def context(*permissions: str) -> AISearchContext:
-    return AISearchContext(user_id=uuid4(), company_id=uuid4(), permission_codes=frozenset(permissions))
+    return AISearchContext(
+        user_id=uuid4(),
+        company_id=uuid4(),
+        permission_codes=frozenset(permissions),
+    )
 
 
-def result(title: str, entity_type: str = "client") -> dict[str, str]:
-    return {"type": entity_type, "id": str(uuid4()), "title": title, "subtitle": None, "status": "active"}
+def result(title: str, entity_type: str = "client") -> dict[str, str | None]:
+    return {
+        "type": entity_type,
+        "id": str(uuid4()),
+        "title": title,
+        "subtitle": None,
+        "status": "active",
+    }
 
 
 def test_exact_match_is_resolved_and_scope_is_forwarded() -> None:
@@ -26,7 +36,9 @@ def test_exact_match_is_resolved_and_scope_is_forwarded() -> None:
         calls.append(kwargs)
         return {"results": [result("ABC")]}
 
-    resolved = AIGlobalSearchResolver(search).resolve(" ABC ", ctx, entity_type="client")
+    resolved = AIGlobalSearchResolver(search).resolve(
+        " ABC ", ctx, entity_type="client"
+    )
 
     assert resolved.resolved
     assert resolved.result is not None
@@ -39,7 +51,9 @@ def test_exact_match_is_resolved_and_scope_is_forwarded() -> None:
 
 def test_single_non_exact_match_is_safely_resolved() -> None:
     ctx = context("global_search.view")
-    resolved = resolve_ai_entity(lambda **_: {"results": [result("ABC Website") ]}, "ABC", ctx)
+    resolved = resolve_ai_entity(
+        lambda **_: {"results": [result("ABC Website")]}, "ABC", ctx
+    )
 
     assert resolved.status == "resolved"
     assert resolved.result is not None
@@ -48,7 +62,13 @@ def test_single_non_exact_match_is_safely_resolved() -> None:
 
 def test_multiple_matches_require_clarification() -> None:
     ctx = context("global_search.view")
-    resolved = resolve_ai_entity(lambda **_: {"results": [result("ABC Website"), result("ABC POS")]}, "ABC", ctx)
+    resolved = resolve_ai_entity(
+        lambda **_: {
+            "results": [result("ABC Website"), result("ABC POS")]
+        },
+        "ABC",
+        ctx,
+    )
 
     assert resolved.needs_clarification
     assert resolved.reason_code == "multiple_matches"
@@ -57,7 +77,11 @@ def test_multiple_matches_require_clarification() -> None:
 
 def test_multiple_exact_matches_require_clarification() -> None:
     ctx = context("global_search.view")
-    resolved = resolve_ai_entity(lambda **_: {"results": [result("ABC"), result("ABC")]}, "ABC", ctx)
+    resolved = resolve_ai_entity(
+        lambda **_: {"results": [result("ABC"), result("ABC")]},
+        "ABC",
+        ctx,
+    )
 
     assert resolved.status == "clarification_required"
     assert resolved.reason_code == "multiple_exact_matches"
@@ -65,7 +89,9 @@ def test_multiple_exact_matches_require_clarification() -> None:
 
 def test_missing_record_is_not_guessed() -> None:
     ctx = context("global_search.view")
-    resolved = resolve_ai_entity(lambda **_: {"results": []}, "Unknown", ctx)
+    resolved = resolve_ai_entity(
+        lambda **_: {"results": []}, "Unknown", ctx
+    )
 
     assert resolved.status == "not_found"
     assert resolved.result is None
@@ -116,11 +142,16 @@ def test_malformed_search_response_is_rejected() -> None:
 
 def test_malformed_result_is_rejected() -> None:
     ctx = context("global_search.view")
+    malformed = {
+        "results": [{"type": "client", "id": "bad", "title": "ABC"}]
+    }
     with pytest.raises(ValueError, match="invalid shape"):
-        resolve_ai_entity(lambda **_: {"results": [{"type": "client", "id": "bad", "title": "ABC"}]}, "ABC", ctx)
+        resolve_ai_entity(lambda **_: malformed, "ABC", ctx)
 
 
 def test_result_contract_normalizes_uuid() -> None:
     record_id = uuid4()
-    normalized = AISearchResult.from_mapping({"type": "project", "id": str(record_id), "title": "POS"})
+    normalized = AISearchResult.from_mapping(
+        {"type": "project", "id": str(record_id), "title": "POS"}
+    )
     assert normalized.record_id == record_id
