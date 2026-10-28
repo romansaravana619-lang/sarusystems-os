@@ -1,13 +1,9 @@
-"""Explicit allow-list and contracts for AI-callable SaruSystems OS tools."""
-
 from dataclasses import dataclass, field
 from typing import Any, Callable
-
 from .contracts import AIActionKind
 
 @dataclass(frozen=True, slots=True)
 class AIToolDefinition:
-    """Complete implementation contract for one AI-callable capability."""
     name: str
     purpose: str
     action_kind: AIActionKind
@@ -24,7 +20,6 @@ class AIToolDefinition:
     handler: Callable[..., Any] | None = None
 
 class AIToolRegistry:
-    """Explicit in-memory allow-list; no database or provider access."""
     def __init__(self, tools: tuple[AIToolDefinition, ...] = ()) -> None:
         self._tools: dict[str, AIToolDefinition] = {}
         for tool in tools:
@@ -64,7 +59,7 @@ def _read(name: str, purpose: str, permission: str, entities: tuple[str, ...], u
         schema["properties"] = fields
     return _tool(name, purpose, READ, schema, _QUERY_OUT, permission, entities, ("validate_input_schema", "resolve_entity_scope", "reject_unknown_fields"), rules, False, f"ai.tool.read.{name}", ("missing_data_return_unavailable", "permission_denied_without_leakage", "api_failure_no_success_claim"), use_case)
 
-AI_READ_TOOLS: tuple[AIToolDefinition, ...] = (
+AI_READ_TOOLS = (
     _read("get_today_attention", "Return Founder attention items for today.", "command_center.view", ("task", "followup", "approval", "alert"), "today_attention"),
     _read("get_tasks", "Retrieve tasks in the user's permitted scope.", "tasks.view", ("task",), "overdue_tasks", fields={"status": {"type": "string"}, "due_before": {"type": "string"}}),
     _read("get_followups", "Retrieve due or upcoming follow-ups.", "crm.view", ("prospect", "client", "opportunity", "followup"), "due_followups"),
@@ -92,20 +87,19 @@ _WRITE_COMMON_VALIDATION = ("validate_input_schema", "resolve_entity_scope", "va
 _WRITE_COMMON_RULES = ("company_scope", "permission_check", "business_rules_engine", "domain_api_authorization")
 _WRITE_FAILURES = ("validation_failure_no_write", "permission_denied_no_mutation", "business_rule_blocked_no_mutation", "api_failure_no_success_claim", "partial_failure_report_explicitly")
 
-AI_WRITE_TOOLS: tuple[AIToolDefinition, ...] = (
+AI_WRITE_TOOLS = (
     _tool("create_task", "Create a task through the Task API after confirmation.", WRITE, {"type": "object", "required": ["title"], "properties": {"title": {"type": "string", "minLength": 1}, "due_date": {"type": "string"}, "priority": {"type": "string"}, "assignee_id": {"type": "string", "format": "uuid"}}}, {"type": "object", "required": ["record_id"], "properties": {"record_id": {"type": "string", "format": "uuid"}}}, "task.create", ("task",), _WRITE_COMMON_VALIDATION, _WRITE_COMMON_RULES, True, "ai.tool.write.create_task", _WRITE_FAILURES, "create_linked_task"),
     _tool("create_followup", "Create a follow-up through the CRM/domain API after confirmation.", WRITE, {"type": "object", "required": ["target_id", "due_at"], "properties": {"target_id": {"type": "string", "format": "uuid"}, "due_at": {"type": "string"}, "notes": {"type": "string"}}}, {"type": "object", "required": ["record_id"]}, "crm.followup.create", ("prospect", "client", "opportunity", "followup"), _WRITE_COMMON_VALIDATION, _WRITE_COMMON_RULES, True, "ai.tool.write.create_followup", _WRITE_FAILURES, "create_followup_task"),
     _tool("schedule_followup", "Schedule a follow-up or reminder through Calendar after confirmation.", WRITE, {"type": "object", "required": ["target_id", "scheduled_at"], "properties": {"target_id": {"type": "string", "format": "uuid"}, "scheduled_at": {"type": "string"}, "title": {"type": "string"}}}, {"type": "object", "required": ["record_id"]}, "calendar.event.create", ("calendar_event", "followup", "prospect", "client"), _WRITE_COMMON_VALIDATION, _WRITE_COMMON_RULES, True, "ai.tool.write.schedule_followup", _WRITE_FAILURES, "schedule_followup"),
     _tool("create_founder_reminder", "Create a Founder reminder through Calendar after confirmation.", WRITE, {"type": "object", "required": ["title", "remind_at"], "properties": {"title": {"type": "string", "minLength": 1}, "remind_at": {"type": "string"}}}, {"type": "object", "required": ["record_id"]}, "calendar.event.create", ("calendar_event", "founder_reminder"), _WRITE_COMMON_VALIDATION, _WRITE_COMMON_RULES, True, "ai.tool.write.create_founder_reminder", _WRITE_FAILURES, "create_founder_reminder"),
     _tool("record_activity", "Record an allowed communication/activity through the Communication API after confirmation.", WRITE, {"type": "object", "required": ["activity_type", "summary"], "properties": {"activity_type": {"type": "string"}, "summary": {"type": "string", "minLength": 1}, "target_id": {"type": "string", "format": "uuid"}}}, {"type": "object", "required": ["record_id"]}, "communication.create", ("communication", "activity", "client", "prospect", "project"), _WRITE_COMMON_VALIDATION, _WRITE_COMMON_RULES + ("external_communication_never_auto_sent",), True, "ai.tool.write.record_activity", _WRITE_FAILURES, "record_activity"),
     _tool("create_notification", "Create an approved notification through Notification API after confirmation.", WRITE, {"type": "object", "required": ["title", "recipient_id"], "properties": {"title": {"type": "string"}, "recipient_id": {"type": "string", "format": "uuid"}, "body": {"type": "string"}, "priority": {"type": "string"}}}, {"type": "object", "required": ["record_id"]}, "notification.create", ("notification", "user"), _WRITE_COMMON_VALIDATION, _WRITE_COMMON_RULES + ("recipient_scope_validation",), True, "ai.tool.write.create_notification", _WRITE_FAILURES, "create_notification"),
-    _tool("update_task", "Update an allowed task field through the Task API after confirmation.", WRITE, {"type": "object", "required": ["task_id", "field", "value"], "properties": {"task_id": {"type": "string", "format": "uuid"}, "field": {"type": "string"}, "value": {}}}, {"type": "object", "required": ["record_id", "updated_field"]}, "task.update", ("task",), _WRITE_COMMON_VALIDATION + ("field_allow_list",), _WRITE_COMMON_RULES, True, "ai.tool.write.update_task", _WRITE_FAILURES, "update_allowed_task_field"),
-    _tool("update_allowed_record", "Update a record only where the underlying domain API explicitly permits the field/action.", WRITE, {"type": "object", "required": ["entity_type", "record_id", "field", "value"], "properties": {"entity_type": {"type": "string"}, "record_id": {"type": "string", "format": "uuid"}, "field": {"type": "string"}, "value": {}}, {"type": "object", "required": ["record_id", "entity_type", "updated_field"]}, "domain.update", ("task", "prospect", "client", "project", "opportunity"), _WRITE_COMMON_VALIDATION + ("entity_field_allow_list",), _WRITE_COMMON_RULES, True, "ai.tool.write.update_allowed_record", _WRITE_FAILURES, "update_allowed_record"),
+    _tool("update_task", "Update an allowed task field through the Task API after confirmation.", WRITE, {"type": "object", "required": ["task_id", "field", "value"], "properties": {"task_id": {"type": "string"}, "field": {"type": "string"}, "value": {}}}, {"type": "object", "required": ["record_id", "updated_field"]}, "task.update", ("task",), _WRITE_COMMON_VALIDATION + ("field_allow_list",), _WRITE_COMMON_RULES, True, "ai.tool.write.update_task", _WRITE_FAILURES, "update_allowed_task_field"),
+    _tool("update_allowed_record", "Update a record only where the underlying domain API explicitly permits the field/action.", WRITE, {"type": "object", "required": ["entity_type", "record_id", "field", "value"], "properties": {"entity_type": {"type": "string"}, "record_id": {"type": "string", "format": "uuid"}, "field": {"type": "string"}, "value": {}}}, {"type": "object", "required": ["record_id", "entity_type", "updated_field"]}, "domain.update", ("task", "prospect", "client", "project", "opportunity"), _WRITE_COMMON_VALIDATION + ("entity_field_allow_list",), _WRITE_COMMON_RULES, True, "ai.tool.write.update_allowed_record", _WRITE_FAILURES, "update_allowed_record"),
 )
 
-APPROVED_AI_TOOLS: tuple[AIToolDefinition, ...] = AI_READ_TOOLS + AI_WRITE_TOOLS
+APPROVED_AI_TOOLS = AI_READ_TOOLS + AI_WRITE_TOOLS
 DEFAULT_AI_TOOL_REGISTRY = AIToolRegistry(APPROVED_AI_TOOLS)
 
 def get_default_ai_tool_registry() -> AIToolRegistry:
-    """Return a fresh registry containing only approved 4.23.3 tools."""
     return AIToolRegistry(APPROVED_AI_TOOLS)
