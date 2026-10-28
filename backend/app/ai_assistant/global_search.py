@@ -1,10 +1,4 @@
-"""AI entity resolution boundary over the existing 4.22 Global Search surface.
-
-This module deliberately does not implement a second search engine.  The caller
-supplies the authoritative Global Search operation, while this layer applies
-AI-specific resolution semantics: company scope, permission context, exact
-match preference, ambiguity detection, and safe missing-record handling.
-"""
+"""AI entity resolution boundary over the existing 4.22 Global Search surface."""
 
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
@@ -71,7 +65,12 @@ class AIGlobalSearchResolver:
 
     REQUIRED_PERMISSION = "global_search.view"
 
-    def __init__(self, search: Callable[..., Mapping[str, Any]], *, permission: str = REQUIRED_PERMISSION) -> None:
+    def __init__(
+        self,
+        search: Callable[..., Mapping[str, Any]],
+        *,
+        permission: str = REQUIRED_PERMISSION,
+    ) -> None:
         self._search = search
         self._permission = permission
 
@@ -94,16 +93,23 @@ class AIGlobalSearchResolver:
         return normalized
 
     @staticmethod
-    def _coerce_results(payload: Mapping[str, Any]) -> tuple[AISearchResult, ...]:
+    def _coerce_results(
+        payload: Mapping[str, Any],
+    ) -> tuple[AISearchResult, ...]:
         raw_results = payload.get("results", ())
         if not isinstance(raw_results, list):
             raise ValueError("Global Search response must contain a results list")
         return tuple(AISearchResult.from_mapping(item) for item in raw_results)
 
     @staticmethod
-    def _exact_matches(results: tuple[AISearchResult, ...], query: str) -> tuple[AISearchResult, ...]:
+    def _exact_matches(
+        results: tuple[AISearchResult, ...],
+        query: str,
+    ) -> tuple[AISearchResult, ...]:
         folded = query.casefold()
-        return tuple(result for result in results if result.title.strip().casefold() == folded)
+        return tuple(
+            result for result in results if result.title.strip().casefold() == folded
+        )
 
     def resolve(
         self,
@@ -146,7 +152,11 @@ class AIGlobalSearchResolver:
 
         exact = self._exact_matches(results, normalized_query)
         if len(exact) == 1:
-            return AIEntityResolution(status="resolved", query=normalized_query, result=exact[0])
+            return AIEntityResolution(
+                status="resolved",
+                query=normalized_query,
+                result=exact[0],
+            )
         if len(exact) > 1:
             return AIEntityResolution(
                 status="clarification_required",
@@ -155,7 +165,11 @@ class AIGlobalSearchResolver:
                 reason_code="multiple_exact_matches",
             )
         if len(results) == 1:
-            return AIEntityResolution(status="resolved", query=normalized_query, result=results[0])
+            return AIEntityResolution(
+                status="resolved",
+                query=normalized_query,
+                result=results[0],
+            )
 
         return AIEntityResolution(
             status="clarification_required",
