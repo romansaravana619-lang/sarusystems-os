@@ -41,13 +41,14 @@ def request() -> AIBusinessRuleRequest:
 
 def test_business_rule_policy_delegates_to_authoritative_engine() -> None:
     evaluator = FakeEvaluator(allowed=True, blocked=False)
+    expected = request()
 
-    decision = AIBusinessRulesPolicy().evaluate(request(), evaluator)
+    decision = AIBusinessRulesPolicy().evaluate(expected, evaluator)
 
     assert decision.allowed is True
     assert decision.blocked is False
     assert decision.reason_code == "allowed"
-    assert evaluator.requests == [request()]
+    assert evaluator.requests == [expected]
 
 
 def test_blocked_business_rule_cannot_be_bypassed() -> None:
