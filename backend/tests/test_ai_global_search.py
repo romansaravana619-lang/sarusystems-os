@@ -63,9 +63,7 @@ def test_single_non_exact_match_is_safely_resolved() -> None:
 def test_multiple_matches_require_clarification() -> None:
     ctx = context("global_search.view")
     resolved = resolve_ai_entity(
-        lambda **_: {
-            "results": [result("ABC Website"), result("ABC POS")]
-        },
+        lambda **_: {"results": [result("ABC Website"), result("ABC POS")]},
         "ABC",
         ctx,
     )
@@ -89,9 +87,7 @@ def test_multiple_exact_matches_require_clarification() -> None:
 
 def test_missing_record_is_not_guessed() -> None:
     ctx = context("global_search.view")
-    resolved = resolve_ai_entity(
-        lambda **_: {"results": []}, "Unknown", ctx
-    )
+    resolved = resolve_ai_entity(lambda **_: {"results": []}, "Unknown", ctx)
 
     assert resolved.status == "not_found"
     assert resolved.result is None
@@ -136,7 +132,7 @@ def test_invalid_query_and_limit_are_rejected_before_search() -> None:
 
 def test_malformed_search_response_is_rejected() -> None:
     ctx = context("global_search.view")
-    with pytest.raises(ValueError, match="results list"):
+    with pytest.raises(TypeError, match="results list"):
         resolve_ai_entity(lambda **_: {"results": {}}, "ABC", ctx)
 
 
