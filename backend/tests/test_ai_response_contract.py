@@ -4,12 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from app.ai_assistant import (
-    AIRecordReference,
     AIRequest,
     AIResponseContract,
     AIResponseType,
     validate_response,
 )
+from app.ai_assistant.contracts import AIRecordReference
 
 
 def test_answer_has_stable_machine_readable_envelope() -> None:
