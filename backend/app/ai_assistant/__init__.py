@@ -8,6 +8,7 @@ from .business_rules import (
     evaluate_ai_business_rules,
 )
 from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
+from .global_search import AIGlobalSearchResolver, AIEntityResolution, AISearchContext, AISearchResult, resolve_ai_entity
 from .orchestrator import AIOrchestrator
 from .rbac import AIAuthorizationContext, AIAuthorizationDecision, AIToolRBACPolicy, authorize_ai_tool
 from .registry import (
@@ -40,4 +41,9 @@ __all__ = [
     "AIBusinessRulesPolicy",
     "BusinessRuleEvaluator",
     "evaluate_ai_business_rules",
+    "AIGlobalSearchResolver",
+    "AIEntityResolution",
+    "AISearchContext",
+    "AISearchResult",
+    "resolve_ai_entity",
 ]
