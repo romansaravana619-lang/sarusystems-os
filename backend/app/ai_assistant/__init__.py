@@ -31,6 +31,7 @@ from .registry import (
     AIToolRegistry,
     get_default_ai_tool_registry,
 )
+from .response import AIResponseContract, validate_response
 from .safety import (
     AIConfirmationTicket,
     AISafetyDecision,
@@ -44,6 +45,8 @@ __all__ = [
     "AIRequest",
     "AIResponse",
     "AIResponseType",
+    "AIResponseContract",
+    "validate_response",
     "AIOrchestrator",
     "AIToolDefinition",
     "AIToolRegistry",
