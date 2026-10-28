@@ -1,5 +1,12 @@
 """SaruSystems OS AI Company Assistant domain foundation."""
 
+from .business_rules import (
+    AIBusinessRuleDecision,
+    AIBusinessRuleRequest,
+    AIBusinessRulesPolicy,
+    BusinessRuleEvaluator,
+    evaluate_ai_business_rules,
+)
 from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
 from .orchestrator import AIOrchestrator
 from .rbac import AIAuthorizationContext, AIAuthorizationDecision, AIToolRBACPolicy, authorize_ai_tool
@@ -28,4 +35,9 @@ __all__ = [
     "AIAuthorizationDecision",
     "AIToolRBACPolicy",
     "authorize_ai_tool",
+    "AIBusinessRuleDecision",
+    "AIBusinessRuleRequest",
+    "AIBusinessRulesPolicy",
+    "BusinessRuleEvaluator",
+    "evaluate_ai_business_rules",
 ]
