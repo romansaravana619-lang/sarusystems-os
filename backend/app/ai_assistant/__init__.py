@@ -9,6 +9,7 @@ from .business_rules import (
     evaluate_ai_business_rules,
 )
 from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
+from .failure import AIFailureHandler, AIFailureKind
 from .global_search import (
     AIGlobalSearchResolver,
     AIEntityResolution,
@@ -47,6 +48,8 @@ __all__ = [
     "AIResponseType",
     "AIResponseContract",
     "validate_response",
+    "AIFailureHandler",
+    "AIFailureKind",
     "AIOrchestrator",
     "AIToolDefinition",
     "AIToolRegistry",
