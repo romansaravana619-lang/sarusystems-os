@@ -2,6 +2,7 @@
 
 from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
 from .orchestrator import AIOrchestrator
+from .rbac import AIAuthorizationContext, AIAuthorizationDecision, AIToolRBACPolicy, authorize_ai_tool
 from .registry import (
     AI_READ_TOOLS,
     AI_WRITE_TOOLS,
@@ -23,4 +24,8 @@ __all__ = [
     "AI_WRITE_TOOLS",
     "APPROVED_AI_TOOLS",
     "get_default_ai_tool_registry",
+    "AIAuthorizationContext",
+    "AIAuthorizationDecision",
+    "AIToolRBACPolicy",
+    "authorize_ai_tool",
 ]
