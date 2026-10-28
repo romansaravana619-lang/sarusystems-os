@@ -98,7 +98,9 @@ class AIToolRBACPolicy:
         user_id = getattr(current_user, "id", None)
         company_id = getattr(current_user, "company_id", None)
         if not isinstance(user_id, UUID) or not isinstance(company_id, UUID):
-            raise ValueError("Authenticated user must provide UUID id and company_id")
+            raise ValueError(  # noqa: TRY004 - public contract uses ValueError for invalid identity context
+                "Authenticated user must provide UUID id and company_id"
+            )
         context = AIAuthorizationContext(
             user_id=user_id,
             company_id=company_id,
