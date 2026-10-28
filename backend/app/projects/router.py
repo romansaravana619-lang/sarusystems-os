@@ -124,10 +124,13 @@ def create_project(payload: ProjectCreate, current_user: User = Depends(require_
         raise HTTPException(status_code=409, detail="Only won opportunities can create projects.")
     if db.scalar(select(Project).where(Project.opportunity_id == opportunity.id)) is not None:
         raise HTTPException(status_code=409, detail="This won opportunity already has a project.")
-    client = db.get(Client, opportunity.id)
+    client = db.scalar(
+        select(Client).where(
+            Client.opportunity_id == opportunity.id,
+            Client.company_id == current_user.company_id,
+        )
+    )
     if client is None:
-        client = db.scalar(select(Client).where(Client.opportunity_id == opportunity.id))
-    if client is None or client.company_id != current_user.company_id:
         raise HTTPException(status_code=409, detail="Won opportunity must have a converted client before project creation.")
     _owner(db, current_user.company_id, payload.owner_user_id)
     project = Project(company_id=current_user.company_id, client_id=client.id, opportunity_id=opportunity.id, owner_user_id=payload.owner_user_id, code="PENDING", name=payload.name, description=payload.description, start_at=payload.start_at, target_end_at=payload.target_end_at, budget=payload.budget, notes=payload.notes)
