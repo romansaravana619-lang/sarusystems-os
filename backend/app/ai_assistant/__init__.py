@@ -1,5 +1,6 @@
 """SaruSystems OS AI Company Assistant domain foundation."""
 
+from .audit import AIAuditEvent, AIAuditRecorder, record_ai_audit
 from .business_rules import (
     AIBusinessRuleDecision,
     AIBusinessRuleRequest,
@@ -30,6 +31,13 @@ from .registry import (
     AIToolRegistry,
     get_default_ai_tool_registry,
 )
+from .safety import (
+    AIConfirmationTicket,
+    AISafetyDecision,
+    AISafetyPolicy,
+    AIWritePreview,
+    canonical_payload_hash,
+)
 
 __all__ = [
     "AIActionKind",
@@ -57,4 +65,12 @@ __all__ = [
     "AISearchContext",
     "AISearchResult",
     "resolve_ai_entity",
+    "AIAuditEvent",
+    "AIAuditRecorder",
+    "record_ai_audit",
+    "AIConfirmationTicket",
+    "AISafetyDecision",
+    "AISafetyPolicy",
+    "AIWritePreview",
+    "canonical_payload_hash",
 ]
