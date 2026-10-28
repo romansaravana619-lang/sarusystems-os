@@ -101,7 +101,7 @@ class AIGlobalSearchResolver:
     ) -> tuple[AISearchResult, ...]:
         raw_results = payload.get("results", ())
         if not isinstance(raw_results, list):
-            raise ValueError("Global Search response must contain a results list")
+            raise TypeError("Global Search response must contain a results list")
         return tuple(AISearchResult.from_mapping(item) for item in raw_results)
 
     @staticmethod
