@@ -24,6 +24,7 @@ def make_event(**overrides):
         "user_id": uuid4(),
         "company_id": uuid4(),
         "request_id": uuid4(),
+        "user_request": "Create a follow-up task for ABC",
         "normalized_intent": "create_followup",
         "tool_name": "create_followup",
         "target_entity_type": "prospect",
@@ -45,6 +46,7 @@ def test_audit_event_contains_required_trace_context_without_secrets() -> None:
 
     assert payload["company_id"] == str(event.company_id)
     assert payload["request_id"] == str(event.request_id)
+    assert payload["user_request"] == event.user_request
     assert payload["tool_name"] == event.tool_name
     assert payload["permission_decision"] == "allowed"
     assert payload["business_rule_decision"] == "allowed"
