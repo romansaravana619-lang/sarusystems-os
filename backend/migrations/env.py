@@ -17,17 +17,45 @@ from app.marketing import models as marketing_models  # noqa: F401
 from app.content import models as content_models  # noqa: F401
 from app.social_media import models as social_media_models  # noqa: F401
 from app.products import models as product_models  # noqa: F401
-config=context.config
-config.set_main_option("sqlalchemy.url",settings.database_url)
-if config.config_file_name is not None: fileConfig(config.config_file_name)
-target_metadata=Base.metadata
+from app.communication import models as communication_models  # noqa: F401
+from app.calendar import models as calendar_models  # noqa: F401
+from app.documents import models as document_models  # noqa: F401
+from app.finance import models as finance_models  # noqa: F401
+from app.notifications import models as notification_models  # noqa: F401
+from app.rules import models as rules_models  # noqa: F401
+
+config = context.config
+config.set_main_option("sqlalchemy.url", settings.database_url)
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+
 def run_migrations_offline():
-    context.configure(url=settings.database_url,target_metadata=target_metadata,literal_binds=True,dialect_opts={"paramstyle":"named"})
-    with context.begin_transaction(): context.run_migrations()
+    context.configure(
+        url=settings.database_url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
 def run_migrations_online():
-    connectable=engine_from_config({"sqlalchemy.url":settings.database_url},prefix="sqlalchemy.",poolclass=pool.NullPool)
+    connectable = engine_from_config(
+        {"sqlalchemy.url": settings.database_url},
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
     with connectable.connect() as connection:
-        context.configure(connection=connection,target_metadata=target_metadata)
-        with context.begin_transaction(): context.run_migrations()
-if context.is_offline_mode(): run_migrations_offline()
-else: run_migrations_online()
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

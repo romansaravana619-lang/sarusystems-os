@@ -1,6 +1,10 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEFAULT_DEVELOPMENT_SECRET = "change-me-in-environment"
 
 
 class Settings(BaseSettings):
@@ -11,7 +15,7 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://sarusystems:sarusystems@localhost:5432/sarusystems_os"
     )
-    secret_key: str = "change-me-in-environment"
+    secret_key: str = DEFAULT_DEVELOPMENT_SECRET
     access_token_expire_minutes: int = 30
 
     model_config = SettingsConfigDict(
@@ -20,6 +24,17 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def validate_secret_key(self):
+        environment = self.environment.strip().lower()
+        if environment not in {"development", "test", "testing"} and (
+            not self.secret_key.strip() or self.secret_key == DEFAULT_DEVELOPMENT_SECRET
+        ):
+            raise ValueError(
+                "SECRET_KEY must be explicitly configured for non-development environments."
+            )
+        return self
 
 
 @lru_cache
