@@ -5,6 +5,9 @@ from typing import Any, Callable, Mapping
 from uuid import UUID
 
 
+_REQUIRED_PERMISSION = "global_search.view"
+
+
 @dataclass(frozen=True, slots=True)
 class AISearchContext:
     """Security context inherited from the authenticated AI request."""
@@ -63,13 +66,13 @@ class AIEntityResolution:
 class AIGlobalSearchResolver:
     """Resolve AI entity references using the existing 4.22 search contract."""
 
-    REQUIRED_PERMISSION = "global_search.view"
+    REQUIRED_PERMISSION = _REQUIRED_PERMISSION
 
     def __init__(
         self,
         search: Callable[..., Mapping[str, Any]],
         *,
-        permission: str = REQUIRED_PERMISSION,
+        permission: str = _REQUIRED_PERMISSION,
     ) -> None:
         self._search = search
         self._permission = permission
