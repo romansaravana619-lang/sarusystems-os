@@ -27,6 +27,7 @@ class AIAuditEvent:
     user_id: UUID
     company_id: UUID
     request_id: UUID
+    user_request: str
     normalized_intent: str | None
     tool_name: str
     target_entity_type: str | None = None
@@ -48,6 +49,7 @@ class AIAuditEvent:
             "company_id": str(self.company_id),
             "request_id": str(self.request_id),
             "timestamp": self.timestamp.isoformat(),
+            "user_request": self.user_request,
             "normalized_intent": self.normalized_intent,
             "tool_name": self.tool_name,
             "target_entity_type": self.target_entity_type,
