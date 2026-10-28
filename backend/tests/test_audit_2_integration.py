@@ -4,7 +4,7 @@ from app.ai_assistant.registry import get_default_ai_tool_registry
 
 
 def test_project_creation_resolves_client_by_opportunity_relationship() -> None:
-    source = Path("backend/app/projects/router.py").read_text()
+    source = Path("app/projects/router.py").read_text()
     assert "Client.opportunity_id == opportunity.id" in source
     assert "Client.company_id == current_user.company_id" in source
     assert "db.get(Client, opportunity.id)" not in source
