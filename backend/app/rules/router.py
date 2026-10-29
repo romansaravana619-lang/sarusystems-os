@@ -139,4 +139,21 @@ def evaluate_rules(payload: RuleEvaluateRequest, current_user: User = Depends(re
     rules = list(db.scalars(select(BusinessRule).where(BusinessRule.company_id == current_user.company_id, BusinessRule.status == "active", BusinessRule.is_enforced.is_(True), BusinessRule.trigger_event == payload.trigger_event, BusinessRule.applies_to == payload.applies_to).order_by(BusinessRule.priority.asc())).all())
     evaluations = [_evaluate_rule(rule, payload) for rule in rules]
     blocked = [item for item in evaluations if item.blocked]
-    return RuleEvaluateResponse(allowed=not blocked, evaluations=evaluations)
+    allowed = not blocked
+    _audit(
+        db,
+        current_user,
+        "business_rule.evaluate",
+        "BusinessRuleEvaluation",
+        current_user.id,
+        _json_details({
+            "trigger_event": payload.trigger_event,
+            "applies_to": payload.applies_to,
+            "action": payload.action,
+            "allowed": allowed,
+            "blocked_rule_ids": [item.rule_id for item in blocked],
+            "evaluation_count": len(evaluations),
+        }),
+    )
+    db.commit()
+    return RuleEvaluateResponse(allowed=allowed, evaluations=evaluations)
