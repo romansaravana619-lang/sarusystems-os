@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     )
     secret_key: str = DEFAULT_DEVELOPMENT_SECRET
     access_token_expire_minutes: int = 30
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -24,6 +25,10 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @model_validator(mode="after")
     def validate_secret_key(self):
