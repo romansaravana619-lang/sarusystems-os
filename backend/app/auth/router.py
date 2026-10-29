@@ -7,14 +7,23 @@ from app.auth.schemas import LoginRequest, MeResponse, TokenResponse
 from app.auth.tokens import create_access_token
 from app.core.database import get_db
 from app.core.security import verify_password
-from app.shared.models import AuditLog, User
+from app.shared.models import AuditLog, Company, User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    user = db.scalar(select(User).where(User.email == payload.email, User.is_active.is_(True)))
+    statement = (
+        select(User)
+        .join(Company, Company.id == User.company_id)
+        .where(
+            User.email == payload.email,
+            User.is_active.is_(True),
+            Company.is_active.is_(True),
+        )
+    )
+    user = db.scalar(statement)
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
