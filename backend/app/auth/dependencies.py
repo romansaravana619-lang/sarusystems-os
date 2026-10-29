@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.tokens import decode_access_token
 from app.core.database import get_db
-from app.shared.models import Role, User
+from app.shared.models import Company, Role, User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -34,14 +34,19 @@ def get_current_user(
 
     statement = (
         select(User)
+        .join(Company, Company.id == User.company_id)
         .options(selectinload(User.roles).selectinload(Role.permissions))
-        .where(User.id == user_id, User.is_active.is_(True))
+        .where(
+            User.id == user_id,
+            User.is_active.is_(True),
+            Company.is_active.is_(True),
+        )
     )
     user = db.scalar(statement)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User is inactive or does not exist.",
+            detail="User or company is inactive, or does not exist.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
