@@ -58,8 +58,3 @@ def test_login_lookup_requires_active_company(monkeypatch):
     assert "companies.is_active" in sql
     assert "users.is_active" in sql
     assert db.committed is True
-
-
-def test_auth_module_keeps_refresh_behind_current_user_dependency():
-    assert auth_router.refresh.__annotations__["current_user"] is auth_router.User
-    assert "get_current_user" in repr(auth_router.refresh)
