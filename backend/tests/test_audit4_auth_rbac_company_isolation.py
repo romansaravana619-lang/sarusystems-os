@@ -26,7 +26,13 @@ class _FakeDB:
 
 
 def _active_user():
-    return SimpleNamespace(id=uuid4(), company_id=uuid4(), is_active=True, roles=[])
+    return SimpleNamespace(
+        id=uuid4(),
+        company_id=uuid4(),
+        is_active=True,
+        password_hash="hashed-password",
+        roles=[],
+    )
 
 
 def test_current_user_lookup_requires_active_company(monkeypatch):
