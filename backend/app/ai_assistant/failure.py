@@ -152,5 +152,6 @@ class AIFailureHandler:
             summary,
             intent=intent,
             error_code=AIFailureKind.OS_API_FAILURE.value,
+            data=data,
             audit_reference=audit_reference,
-        ).model_copy(update={"data": data})
+        )
