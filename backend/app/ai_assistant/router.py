@@ -20,17 +20,20 @@ from app.calendar.router import create_event_record, list_events
 from app.calendar.schemas import CalendarEventCreate, CalendarEventResponse
 from app.clients.router import get_workspace as get_client_workspace
 from app.command_center.router import get_command_center
-from app.communication.router import list_activities
+from app.communication.router import create_activity_record, list_activities
+from app.communication.schemas import ActivityCreate, ActivityResponse
 from app.crm.router import create_follow_up_record, crm_pipeline, list_follow_ups, list_opportunities
 from app.finance.router import dashboard as finance_dashboard, list_milestones
 from app.freelancers.router import workspace as freelancer_workspace
-from app.notifications.router import list_notifications
+from app.notifications.router import create_notification_record, list_notifications
+from app.notifications.schemas import NotificationCreate, NotificationResponse
 from app.projects.router import list_projects, workspace as project_workspace
 from app.sales.router import pipeline as sales_pipeline
 from app.core.database import SessionLocal, get_db
 from app.global_search.router import search as global_search
 from app.shared.models import User
-from app.tasks.router import create_task_record, list_tasks
+from app.tasks.router import create_task_record, list_tasks, update_task_record
+from app.tasks.schemas import TaskUpdate
 from app.tasks.schemas import TaskCreate, TaskResponse
 from app.crm.schemas import FollowUpCreate, FollowUpResponse
 from app.rules.router import evaluate_rules
@@ -54,6 +57,9 @@ PENDING_WRITE_LOCK = Lock()
 
 DOMAIN_PERMISSIONS = {
     "create_founder_reminder": "calendar.events.create",
+    "record_activity": "communication.activities.create",
+    "create_notification": "notifications.create",
+    "update_task": "tasks.edit",
     "schedule_followup": "calendar.events.create",
     "get_today_attention": "command_center.view",
     "get_tasks": "tasks.view",
@@ -286,7 +292,7 @@ def list_ai_read_tools(current_user: User = Depends(get_current_user)) -> dict[s
             })
     write_available = []
     for tool in registry.list(AIActionKind.WRITE):
-        if tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder"}:
+        if tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder", "record_activity", "create_notification", "update_task"}:
             continue
         effective_tool = replace(
             tool,
@@ -452,6 +458,32 @@ def preview_ai_write(
             }
             preview_payload = FollowUpCreate.model_validate(followup_input).model_dump(mode="json")
             action_label = "Create CRM follow-up"
+        elif tool.name == "record_activity":
+            activity_payload = {**invocation.input, "occurred_at": invocation.input.get("occurred_at") or datetime.now(timezone.utc).isoformat(), "actor_user_id": current_user.id}
+            preview_payload = ActivityCreate.model_validate(activity_payload).model_dump(mode="json")
+            action_label = "Record activity"
+        elif tool.name == "create_notification":
+            notification_payload = {"recipient_user_id": invocation.input["recipient_id"], "notification_type": "general", "channel": "in_app", "priority": invocation.input.get("priority", "normal"), "title": invocation.input["title"], "message": invocation.input.get("body") or invocation.input["title"]}
+            preview_payload = NotificationCreate.model_validate(notification_payload).model_dump(mode="json")
+            action_label = "Create in-app notification"
+        elif tool.name == "update_task":
+            update_payload = {invocation.input["field"]: invocation.input["value"]}
+            preview_payload = {"task_id": invocation.input["task_id"], **update_payload}
+            action_label = "Update task"
+        elif tool.name == "record_activity":
+            activity_payload = {**confirmation.input, "occurred_at": confirmation.input.get("occurred_at") or datetime.now(timezone.utc).isoformat(), "actor_user_id": current_user.id}
+            action_payload = ActivityCreate.model_validate(activity_payload).model_dump(mode="json")
+            target_entity_type = confirmation.input.get("entity_type") or "activity"
+            target_entity_id = UUID(confirmation.input["entity_id"]) if confirmation.input.get("entity_id") else None
+            rule_trigger, rule_applies_to, action_name = "communication.activity.create", "activity", "record_activity"
+        elif tool.name == "create_notification":
+            action_payload = NotificationCreate.model_validate({"recipient_user_id": confirmation.input["recipient_id"], "notification_type": "general", "channel": "in_app", "priority": confirmation.input.get("priority", "normal"), "title": confirmation.input["title"], "message": confirmation.input.get("body") or confirmation.input["title"]}).model_dump(mode="json")
+            target_entity_type, target_entity_id = "notification", None
+            rule_trigger, rule_applies_to, action_name = "notification.create", "notification", "create_notification"
+        elif tool.name == "update_task":
+            action_payload = {"task_id": confirmation.input["task_id"], "field": confirmation.input["field"], "value": confirmation.input["value"]}
+            target_entity_type, target_entity_id = "task", UUID(confirmation.input["task_id"])
+            rule_trigger, rule_applies_to, action_name = "task.update", "task", "update_task"
         else:
             is_reminder = tool.name == "create_founder_reminder"
             start_key = "remind_at" if is_reminder else "scheduled_at"
@@ -522,7 +554,7 @@ def confirm_ai_write(
     db: Session = Depends(get_db),
 ) -> AIResponse:
     tool = WRITE_REGISTRY.get(confirmation.tool_name)
-    if tool is None or tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder"} or tool.action_kind != AIActionKind.WRITE:
+    if tool is None or tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder", "record_activity", "create_notification", "update_task"} or tool.action_kind != AIActionKind.WRITE:
         raise HTTPException(status_code=404, detail="Confirmed write capability not found.")
 
     with PENDING_WRITE_LOCK:
@@ -713,6 +745,18 @@ def confirm_ai_write(
                 )
                 data_key = "followup"
                 response_data = FollowUpResponse.model_validate(record).model_dump(mode="json")
+            elif tool.name == "record_activity":
+                record = create_activity_record(ActivityCreate.model_validate(action_payload), current_user, db, commit=False)
+                data_key = "activity"
+                response_data = ActivityResponse.model_validate(record).model_dump(mode="json")
+            elif tool.name == "create_notification":
+                record = create_notification_record(NotificationCreate.model_validate(action_payload), current_user, db, commit=False)
+                data_key = "notification"
+                response_data = NotificationResponse.model_validate(record).model_dump(mode="json")
+            elif tool.name == "update_task":
+                record = update_task_record(UUID(action_payload["task_id"]), TaskUpdate.model_validate({action_payload["field"]: action_payload["value"]}), current_user, db, commit=False)
+                data_key = "task"
+                response_data = TaskResponse.model_validate(record).model_dump(mode="json")
             else:
                 record = create_event_record(
                     CalendarEventCreate.model_validate(action_payload),
@@ -761,7 +805,7 @@ def confirm_ai_write(
 
     with PENDING_WRITE_LOCK:
         PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
-    data_key = "task" if tool.name == "create_task" else "followup" if tool.name == "create_followup" else "calendar_event"
+    data_key = "task" if tool.name in {"create_task", "update_task"} else "followup" if tool.name == "create_followup" else "calendar_event" if tool.name in {"schedule_followup", "create_founder_reminder"} else "activity" if tool.name == "record_activity" else "notification"
     created_data = result[data_key]
     record = AIRecordReference(
         entity_type=data_key,
