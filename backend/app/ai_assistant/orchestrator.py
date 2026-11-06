@@ -97,6 +97,7 @@ class AIOrchestrator:
         if (
             not authorization_decision.allowed
             or authorization_decision.tool_name != tool_name
+            or authorization_decision.required_permission != tool.required_permission
             or authorization_decision.user_id != audit_event.user_id
             or authorization_decision.company_id != audit_event.company_id
             or not business_rule_decision.allowed
