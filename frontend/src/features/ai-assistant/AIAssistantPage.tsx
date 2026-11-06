@@ -291,6 +291,63 @@ export default function AIAssistantPage({ token }: Props) {
             </section>
           ) : null}
 
+          {writeTools.some((tool) => tool.name === "create_followup") ? (
+            <section className="ai-result-panel ai-write-panel">
+              <div className="ai-result-heading"><div><p className="eyebrow">CONFIRMATION-PROTECTED ACTION</p><h3>Create CRM follow-up</h3></div><span>Founder approval required</span></div>
+              <div className="ai-assistant-composer">
+                <label htmlFor="ai-followup-target-type">Linked record type</label>
+                <select id="ai-followup-target-type" value={followupTargetType} onChange={(event) => setFollowupTargetType(event.target.value)}><option value="prospect">Prospect</option><option value="contact">Contact</option></select>
+                <label htmlFor="ai-followup-target-id">Prospect / Contact ID</label>
+                <input id="ai-followup-target-id" value={followupTargetId} onChange={(event) => setFollowupTargetId(event.target.value)} placeholder="Paste record UUID" />
+                <label htmlFor="ai-followup-title">Follow-up title</label>
+                <input id="ai-followup-title" value={followupTitle} onChange={(event) => setFollowupTitle(event.target.value)} placeholder="e.g. Call prospect about requirements" />
+                <label htmlFor="ai-followup-due">Due date and time</label>
+                <input id="ai-followup-due" type="datetime-local" value={followupDueAt} onChange={(event) => setFollowupDueAt(event.target.value)} />
+                <button className="primary-button" type="button" disabled={otherWriteLoading} onClick={() => { try { void previewOtherWrite("create_followup", `Create follow-up: ${followupTitle}`, { target_type: followupTargetType, target_id: followupTargetId.trim(), title: followupTitle.trim(), due_at: toIso(followupDueAt) }); } catch (err) { setError(err instanceof Error ? err.message : "Enter valid follow-up details."); } }}>{otherWriteLoading ? "Preparing preview…" : "Preview follow-up"}</button>
+              </div>
+            </section>
+          ) : null}
+          {writeTools.some((tool) => tool.name === "schedule_followup") ? (
+            <section className="ai-result-panel ai-write-panel">
+              <div className="ai-result-heading"><div><p className="eyebrow">CONFIRMATION-PROTECTED ACTION</p><h3>Schedule follow-up</h3></div><span>Founder approval required</span></div>
+              <div className="ai-assistant-composer">
+                <label htmlFor="ai-calendar-target-type">Linked record type</label>
+                <select id="ai-calendar-target-type" value={calendarTargetType} onChange={(event) => setCalendarTargetType(event.target.value)}><option value="prospect">Prospect</option><option value="client">Client</option></select>
+                <label htmlFor="ai-calendar-target-id">Prospect / Client ID</label>
+                <input id="ai-calendar-target-id" value={calendarTargetId} onChange={(event) => setCalendarTargetId(event.target.value)} placeholder="Paste record UUID" />
+                <label htmlFor="ai-calendar-title">Event title</label>
+                <input id="ai-calendar-title" value={calendarTitle} onChange={(event) => setCalendarTitle(event.target.value)} placeholder="e.g. Client follow-up call" />
+                <label htmlFor="ai-calendar-start">Starts at</label>
+                <input id="ai-calendar-start" type="datetime-local" value={calendarStartAt} onChange={(event) => setCalendarStartAt(event.target.value)} />
+                <label htmlFor="ai-calendar-end">Ends at</label>
+                <input id="ai-calendar-end" type="datetime-local" value={calendarEndAt} onChange={(event) => setCalendarEndAt(event.target.value)} />
+                <button className="primary-button" type="button" disabled={otherWriteLoading} onClick={() => { try { void previewOtherWrite("schedule_followup", `Schedule follow-up: ${calendarTitle}`, { target_type: calendarTargetType, target_id: calendarTargetId.trim(), title: calendarTitle.trim(), scheduled_at: toIso(calendarStartAt), end_at: toIso(calendarEndAt) }); } catch (err) { setError(err instanceof Error ? err.message : "Enter valid calendar details."); } }}>{otherWriteLoading ? "Preparing preview…" : "Preview schedule"}</button>
+              </div>
+            </section>
+          ) : null}
+          {writeTools.some((tool) => tool.name === "create_founder_reminder") ? (
+            <section className="ai-result-panel ai-write-panel">
+              <div className="ai-result-heading"><div><p className="eyebrow">CONFIRMATION-PROTECTED ACTION</p><h3>Create Founder reminder</h3></div><span>Founder approval required</span></div>
+              <div className="ai-assistant-composer">
+                <label htmlFor="ai-reminder-title">Reminder title</label>
+                <input id="ai-reminder-title" value={reminderTitle} onChange={(event) => setReminderTitle(event.target.value)} placeholder="e.g. Review weekly business performance" />
+                <label htmlFor="ai-reminder-start">Reminder time</label>
+                <input id="ai-reminder-start" type="datetime-local" value={reminderStartAt} onChange={(event) => setReminderStartAt(event.target.value)} />
+                <label htmlFor="ai-reminder-end">End time</label>
+                <input id="ai-reminder-end" type="datetime-local" value={reminderEndAt} onChange={(event) => setReminderEndAt(event.target.value)} />
+                <button className="primary-button" type="button" disabled={otherWriteLoading} onClick={() => { try { void previewOtherWrite("create_founder_reminder", `Create Founder reminder: ${reminderTitle}`, { title: reminderTitle.trim(), remind_at: toIso(reminderStartAt), end_at: toIso(reminderEndAt) }); } catch (err) { setError(err instanceof Error ? err.message : "Enter valid reminder details."); } }}>{otherWriteLoading ? "Preparing preview…" : "Preview reminder"}</button>
+              </div>
+            </section>
+          ) : null}
+          {otherWritePreview ? (
+            <section className="ai-result-panel ai-write-confirmation" aria-live="polite">
+              <p><strong>{otherWritePreview.summary}</strong></p>
+              <p className="ai-muted">{displayValue(otherWritePreview.data.payload)}</p>
+              {otherWritePreview.response_type === "action_preview" ? <button className="primary-button" type="button" disabled={otherWriteLoading} onClick={() => void confirmOtherWrite()}>{otherWriteLoading ? "Executing…" : "Confirm & execute"}</button> : null}
+              {otherWritePreview.response_type === "action_result" ? <p className="success-message">Action completed. Audit reference: {otherWritePreview.audit_reference ?? "—"}</p> : null}
+              {otherWritePreview.warnings.map((warning) => <p className="ai-muted" key={warning}>{warning}</p>)}
+            </section>
+          ) : null}
           {error ? <p className="ai-error" role="alert">{error}</p> : null}
           {response ? (
             <section className="ai-result-panel" aria-live="polite">
