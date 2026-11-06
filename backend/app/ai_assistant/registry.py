@@ -69,7 +69,7 @@ AI_READ_TOOLS = (
     _read("get_proposals", "Retrieve proposals and response status.", "sales.pipeline.view", ("proposal", "opportunity"), "pending_proposals"),
     _read("get_projects", "Retrieve permitted projects.", "projects.view", ("project", "milestone", "task"), "project_summary"),
     _read("get_project_risks", "Return projects with delivery or financial risk.", "projects.view", ("project", "risk", "task"), "project_risks"),
-    _read("get_project_milestones", "Return upcoming project milestones.", "projects.view", ("project", "milestone"), "upcoming_milestones"),
+    _read("get_project_milestones", "Return upcoming project milestones.", "projects.view", ("project", "milestone"), "upcoming_milestones", fields={"project_id": {"type": "string", "format": "uuid"}}),
     _read("get_unpaid_payments", "Return unpaid or overdue client payments.", "finance.dashboard.view", ("client_payment", "project", "client"), "unpaid_client_payments", rules=("company_scope", "finance_access", "domain_api_authorization")),
     _read("get_financial_summary", "Return permitted revenue and expense summary.", "finance.dashboard.view", ("payment", "expense", "project"), "revenue_expenses", rules=("company_scope", "finance_access", "domain_api_authorization")),
     _read("get_freelancer_workload", "Return freelancer workload and assignments.", "freelancers.view", ("freelancer", "assignment", "task"), "freelancer_workload"),
