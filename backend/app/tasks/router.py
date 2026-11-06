@@ -262,7 +262,6 @@ def create_task(payload: TaskCreate, current_user: User = Depends(require_permis
     return create_task_record(payload, current_user, db)
 
 
-@router.patch("/{task_id}", response_model=TaskResponse)
 def update_task_record(task_id: UUID, payload: TaskUpdate, current_user: User, db: Session, *, commit: bool = True) -> Task:
     task = _task(db, current_user.company_id, task_id)
     values = payload.model_dump(exclude_unset=True)
@@ -301,6 +300,11 @@ def update_task_record(task_id: UUID, payload: TaskUpdate, current_user: User, d
         db.commit()
         db.refresh(task)
     return task
+
+
+@router.patch("/{task_id}", response_model=TaskResponse)
+def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends(require_permission("tasks.edit")), db: Session = Depends(get_db)) -> Task:
+    return update_task_record(task_id, payload, current_user, db)
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
