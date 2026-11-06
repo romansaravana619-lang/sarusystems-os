@@ -566,7 +566,7 @@ def confirm_ai_write(
             rule_trigger = "task.create"
             rule_applies_to = "task"
             action_name = "create_task"
-        else:
+        elif tool.name == "create_followup":
             target_field = "prospect_id" if confirmation.input["target_type"] == "prospect" else "contact_id"
             followup_input = {
                 target_field: UUID(confirmation.input["target_id"]),
@@ -581,6 +581,30 @@ def confirm_ai_write(
             rule_trigger = "crm.followup.create"
             rule_applies_to = "crm_followup"
             action_name = "create_followup"
+        else:
+            is_reminder = tool.name == "create_founder_reminder"
+            start_key = "remind_at" if is_reminder else "scheduled_at"
+            calendar_input = {
+                "event_type": "founder_reminder" if is_reminder else "follow_up",
+                "title": confirmation.input["title"],
+                "description": confirmation.input.get("notes"),
+                "start_at": confirmation.input[start_key],
+                "end_at": confirmation.input["end_at"],
+                "timezone": confirmation.input.get("timezone", "Asia/Kolkata"),
+                "owner_user_id": current_user.id,
+                "notes": confirmation.input.get("notes"),
+            }
+            if not is_reminder:
+                link_field = "prospect_id" if confirmation.input["target_type"] == "prospect" else "client_id"
+                calendar_input[link_field] = UUID(confirmation.input["target_id"])
+                target_entity_id = UUID(confirmation.input["target_id"])
+            else:
+                target_entity_id = None
+            action_payload = CalendarEventCreate.model_validate(calendar_input).model_dump(mode="json")
+            target_entity_type = "calendar_event"
+            rule_trigger = "calendar.event.create"
+            rule_applies_to = "calendar_event"
+            action_name = tool.name
         role_names = tuple(
             role.name for role in current_user.roles
             if getattr(role, "is_active", True)
