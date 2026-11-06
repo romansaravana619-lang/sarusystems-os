@@ -64,14 +64,20 @@ class AIAuditedActionExecutor:
                 failure_db = self._failure_audit_session_factory()
                 self._recorder.record(failure_db, failure_event)
                 failure_db.commit()
-            except Exception as audit_error:
+            except Exception as audit_error:  # noqa: BLE001 - preserve the original action failure
                 error.add_note(
                     "The AI action failed and its independent audit event could not be committed: "
                     f"{type(audit_error).__name__}"
                 )
             finally:
                 if failure_db is not None:
-                    failure_db.close()
+                    try:
+                        failure_db.close()
+                    except Exception as close_error:  # noqa: BLE001 - preserve the original action failure
+                        error.add_note(
+                            "The independent failure-audit session could not be closed: "
+                            f"{type(close_error).__name__}"
+                        )
             raise
 
         success_event = replace(
