@@ -5,9 +5,11 @@ from uuid import uuid4
 import pytest
 
 from app.ai_assistant.audit import AIAuditEvent
+from app.ai_assistant.business_rules import AIBusinessRuleDecision
 from app.ai_assistant.contracts import AIActionKind, AIRequest
 from app.ai_assistant.execution import AIAuditedActionExecutor
 from app.ai_assistant.orchestrator import AIOrchestrator
+from app.ai_assistant.rbac import AIAuthorizationDecision
 from app.ai_assistant.registry import AIToolDefinition, AIToolRegistry
 from app.ai_assistant.safety import AISafetyPolicy, canonical_payload_hash
 
@@ -66,6 +68,27 @@ def confirmed_decision(registry, request, payload):
     return decision
 
 
+
+def approval_context(event: AIAuditEvent):
+    authorization = AIAuthorizationDecision(
+        allowed=True,
+        reason_code="allowed",
+        tool_name="create_task",
+        required_permission="task.create",
+        user_id=event.user_id,
+        company_id=event.company_id,
+    )
+    business_rules = AIBusinessRuleDecision(
+        allowed=True,
+        reason_code="allowed",
+        blocked=False,
+        trigger_event="ai.tool.write.create_task",
+        applies_to="task",
+        action="create",
+        evaluation_count=1,
+    )
+    return authorization, business_rules
+
 def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> None:
     registry = build_registry()
     request = AIRequest(message="Create a task named Prepare proposal")
@@ -76,6 +99,9 @@ def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> N
     record_id = uuid4()
     calls = []
 
+    event = build_context(request, payload)
+    authorization, business_rules = approval_context(event)
+
     def handler(**kwargs):
         calls.append(kwargs)
         return {"record_id": str(record_id)}
@@ -85,7 +111,9 @@ def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> N
         "create_task",
         payload,
         safety_decision=confirmed_decision(registry, request, payload),
-        audit_event=build_context(request, payload),
+        authorization_decision=authorization,
+        business_rule_decision=business_rules,
+        audit_event=event,
         handler=handler,
     )
 
@@ -114,6 +142,8 @@ def test_orchestrator_records_sanitized_failure_and_reraises() -> None:
         registry,
         action_executor=AIAuditedActionExecutor(session),
     )
+    event = build_context(request, payload)
+    authorization, business_rules = approval_context(event)
 
     def handler(**kwargs):
         raise RuntimeError("provider_secret=do-not-store-this")
@@ -143,6 +173,9 @@ def test_write_is_not_executed_without_valid_consumed_confirmation() -> None:
     orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
     called = False
 
+    event = build_context(request, payload)
+    authorization, business_rules = approval_context(event)
+
     def handler(**kwargs):
         nonlocal called
         called = True
@@ -169,6 +202,7 @@ def test_write_is_not_executed_when_audit_context_does_not_match_request() -> No
     orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
     called = False
     mismatched = build_context(AIRequest(message="Different request"), payload)
+    authorization, business_rules = approval_context(mismatched)
 
     def handler(**kwargs):
         nonlocal called
@@ -180,6 +214,8 @@ def test_write_is_not_executed_when_audit_context_does_not_match_request() -> No
             "create_task",
             payload,
             safety_decision=confirmed_decision(registry, request, payload),
+            authorization_decision=authorization,
+            business_rule_decision=business_rules,
             audit_event=mismatched,
             handler=handler,
         )
@@ -201,6 +237,8 @@ def test_read_only_event_cannot_be_used_for_write_execution() -> None:
             "create_task",
             payload,
             safety_decision=confirmed_decision(registry, request, payload),
+            authorization_decision=authorization,
+            business_rule_decision=business_rules,
             audit_event=replace(read_event, read_only=True),
             handler=lambda **kwargs: {"record_id": uuid4()},
         )
