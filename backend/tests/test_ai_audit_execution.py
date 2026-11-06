@@ -9,7 +9,7 @@ from app.ai_assistant.contracts import AIActionKind, AIRequest
 from app.ai_assistant.execution import AIAuditedActionExecutor
 from app.ai_assistant.orchestrator import AIOrchestrator
 from app.ai_assistant.registry import AIToolDefinition, AIToolRegistry
-from app.ai_assistant.safety import AISafetyPolicy
+from app.ai_assistant.safety import AISafetyPolicy, canonical_payload_hash
 
 
 class FakeSession:
@@ -51,7 +51,7 @@ def build_context(request: AIRequest, payload: dict, *, confirmation_state: str 
         normalized_intent="create_task",
         tool_name="create_task",
         action_metadata={"title": "Prepare proposal"},
-        action_payload_hash=__import__("app.ai_assistant.safety", fromlist=["canonical_payload_hash"]).canonical_payload_hash(payload),
+        action_payload_hash=canonical_payload_hash(payload),
         permission_decision="allowed",
         business_rule_decision="allowed",
         confirmation_state=confirmation_state,
