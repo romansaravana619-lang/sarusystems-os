@@ -493,19 +493,6 @@ def preview_ai_write(
                 raise ValueError("No task field was supplied")
             preview_payload = {"task_id": str(task_id), **update_payload}
             action_label = "Update task"
-        elif tool.name == "record_activity":
-            action_payload = _activity_payload(confirmation.input, current_user)
-            target_entity_type = confirmation.input.get("entity_type") or "activity"
-            target_entity_id = UUID(confirmation.input["entity_id"]) if confirmation.input.get("entity_id") else None
-            rule_trigger, rule_applies_to, action_name = "communication.activity.create", "activity", "record_activity"
-        elif tool.name == "create_notification":
-            action_payload = NotificationCreate.model_validate({"recipient_user_id": confirmation.input["recipient_id"], "notification_type": "general", "channel": "in_app", "priority": confirmation.input.get("priority", "normal"), "title": confirmation.input["title"], "message": confirmation.input.get("body") or confirmation.input["title"]}).model_dump(mode="json")
-            target_entity_type, target_entity_id = "notification", None
-            rule_trigger, rule_applies_to, action_name = "notification.create", "notification", "create_notification"
-        elif tool.name == "update_task":
-            action_payload = {"task_id": confirmation.input["task_id"], "field": confirmation.input["field"], "value": confirmation.input["value"]}
-            target_entity_type, target_entity_id = "task", UUID(confirmation.input["task_id"])
-            rule_trigger, rule_applies_to, action_name = "task.update", "task", "update_task"
         else:
             is_reminder = tool.name == "create_founder_reminder"
             start_key = "remind_at" if is_reminder else "scheduled_at"
@@ -640,6 +627,32 @@ def confirm_ai_write(
             rule_trigger = "crm.followup.create"
             rule_applies_to = "crm_followup"
             action_name = "create_followup"
+        elif tool.name == "record_activity":
+            action_payload = _activity_payload(confirmation.input, current_user)
+            target_entity_type = confirmation.input.get("target_type") or "activity"
+            target_entity_id = UUID(confirmation.input["target_id"]) if confirmation.input.get("target_id") else None
+            rule_trigger = "communication.activity.create"
+            rule_applies_to = "activity"
+            action_name = "record_activity"
+        elif tool.name == "create_notification":
+            action_payload = NotificationCreate.model_validate({
+                "recipient_user_id": confirmation.input["recipient_id"],
+                "notification_type": "general",
+                "channel": "in_app",
+                "priority": confirmation.input.get("priority", "normal"),
+                "title": confirmation.input["title"],
+                "message": confirmation.input.get("body") or confirmation.input["title"],
+            }).model_dump(mode="json")
+            target_entity_type, target_entity_id = "notification", None
+            rule_trigger, rule_applies_to, action_name = "notification.create", "notification", "create_notification"
+        elif tool.name == "update_task":
+            action_payload = {
+                "task_id": confirmation.input["task_id"],
+                "field": confirmation.input["field"],
+                "value": confirmation.input["value"],
+            }
+            target_entity_type, target_entity_id = "task", UUID(confirmation.input["task_id"])
+            rule_trigger, rule_applies_to, action_name = "task.update", "task", "update_task"
         else:
             is_reminder = tool.name == "create_founder_reminder"
             start_key = "remind_at" if is_reminder else "scheduled_at"
