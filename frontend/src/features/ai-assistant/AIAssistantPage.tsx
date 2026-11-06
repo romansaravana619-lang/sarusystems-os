@@ -46,11 +46,20 @@ export default function AIAssistantPage({ token }: Props) {
     setError("");
     setResponse(null);
     try {
+      const idFields: Record<string, string> = {
+        get_client_summary: "client_id",
+        get_project_summary: "project_id",
+        get_project_milestones: "project_id",
+        get_opportunity_summary: "opportunity_id",
+      };
+      const idField = idFields[toolName];
       const input: Record<string, unknown> = toolName === "global_search"
         ? { query: text, ...(entityType ? { entity_types: [entityType] } : {}) }
         : toolName === "get_tasks" && query.trim()
           ? { status: query.trim() }
-          : {};
+          : idField && query.trim()
+            ? { [idField]: query.trim() }
+            : {};
       const result = await runAIAssistantRead(token, {
         message: text,
         tool_name: toolName,
@@ -120,6 +129,12 @@ export default function AIAssistantPage({ token }: Props) {
           ) : (
             <div className="ai-assistant-composer">
               <p className="ai-muted">This capability retrieves information using your existing OS permissions.</p>
+              {["get_client_summary", "get_project_summary", "get_project_milestones", "get_opportunity_summary"].includes(selectedTool) ? (
+                <>
+                  <label htmlFor="ai-query">Record ID (UUID)</label>
+                  <input id="ai-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Paste the record ID" />
+                </>
+              ) : null}
               <button className="primary-button" type="button" disabled={loading} onClick={() => void submit(tools.find((tool) => tool.name === selectedTool)?.purpose ?? "Run this read query.")}>{loading ? "Loading…" : "Run query"}</button>
             </div>
           )}
