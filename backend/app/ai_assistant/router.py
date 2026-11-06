@@ -419,7 +419,7 @@ def preview_ai_write(
     tool = WRITE_REGISTRY.get(invocation.tool_name)
     if tool is None or tool.action_kind != AIActionKind.WRITE:
         raise HTTPException(status_code=404, detail="Registered write capability not found.")
-    if tool.name not in {"create_task", "create_followup"}:
+    if tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder"}:
         raise HTTPException(status_code=501, detail="This write capability is not enabled for execution yet.")
 
     effective_tool = replace(
@@ -441,7 +441,7 @@ def preview_ai_write(
         if tool.name == "create_task":
             preview_payload = TaskCreate.model_validate(invocation.input).model_dump(mode="json")
             action_label = "Create task"
-        else:
+        elif tool.name == "create_followup":
             target_field = "prospect_id" if invocation.input["target_type"] == "prospect" else "contact_id"
             followup_input = {
                 target_field: UUID(invocation.input["target_id"]),
@@ -452,6 +452,24 @@ def preview_ai_write(
             }
             preview_payload = FollowUpCreate.model_validate(followup_input).model_dump(mode="json")
             action_label = "Create CRM follow-up"
+        else:
+            is_reminder = tool.name == "create_founder_reminder"
+            start_key = "remind_at" if is_reminder else "scheduled_at"
+            calendar_input = {
+                "event_type": "founder_reminder" if is_reminder else "follow_up",
+                "title": invocation.input["title"],
+                "description": invocation.input.get("notes"),
+                "start_at": invocation.input[start_key],
+                "end_at": invocation.input["end_at"],
+                "timezone": invocation.input.get("timezone", "Asia/Kolkata"),
+                "owner_user_id": current_user.id,
+                "notes": invocation.input.get("notes"),
+            }
+            if not is_reminder:
+                link_field = "prospect_id" if invocation.input["target_type"] == "prospect" else "client_id"
+                calendar_input[link_field] = UUID(invocation.input["target_id"])
+            preview_payload = CalendarEventCreate.model_validate(calendar_input).model_dump(mode="json")
+            action_label = "Create Founder reminder" if is_reminder else "Schedule follow-up"
         request = AIRequest(message=invocation.message, context=invocation.input)
         preview = WRITE_SAFETY_POLICY.preview_write(request, tool.name, invocation.input)
     except (ValueError, TypeError) as exc:
@@ -485,7 +503,11 @@ def preview_ai_write(
             "preview_id": str(preview.preview_id),
             "action": action_label,
             "payload": preview_payload,
-            **({"task": preview_payload} if tool.name == "create_task" else {"followup": preview_payload}),
+            **(
+                {"task": preview_payload} if tool.name == "create_task"
+                else {"followup": preview_payload} if tool.name == "create_followup"
+                else {"calendar_event": preview_payload}
+            ),
         },
         actions_available=[f"confirm_{tool.name}"],
         confirmation_required=True,
