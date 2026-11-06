@@ -16,13 +16,14 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user, require_permission
 from app.analytics.router import dashboard as analytics_dashboard
 from app.calendar.router import list_events
+from app.clients.router import get_workspace as get_client_workspace
 from app.command_center.router import get_command_center
 from app.communication.router import list_activities
 from app.crm.router import crm_pipeline, list_follow_ups, list_opportunities
 from app.finance.router import dashboard as finance_dashboard, list_milestones
 from app.freelancers.router import workspace as freelancer_workspace
 from app.notifications.router import list_notifications
-from app.projects.router import list_projects
+from app.projects.router import list_projects, workspace as project_workspace
 from app.sales.router import pipeline as sales_pipeline
 from app.core.database import get_db
 from app.global_search.router import search as global_search
@@ -45,6 +46,12 @@ DOMAIN_PERMISSIONS = {
     "get_followups": "crm.followups.view",
     "get_sales_pipeline": "sales.pipeline.view",
     "get_prospect_followups": "crm.pipeline.view",
+    "get_proposals": "sales.pipeline.view",
+    "get_project_milestones": "projects.view",
+    "get_client_summary": "clients.view",
+    "get_project_summary": "projects.view",
+    "get_opportunity_summary": "crm.opportunities.view",
+    "get_project_risks": "projects.view",
     "get_opportunities": "crm.opportunities.view",
     "get_projects": "projects.view",
     "get_unpaid_payments": "finance.milestones.view",
@@ -59,7 +66,9 @@ DOMAIN_PERMISSIONS = {
 
 READ_HANDLERS = frozenset({
     "get_today_attention", "get_tasks", "get_followups", "get_sales_pipeline",
-    "get_prospect_followups", "get_opportunities", "get_projects",
+    "get_prospect_followups", "get_proposals", "get_opportunities", "get_projects",
+    "get_project_milestones", "get_client_summary", "get_project_summary",
+    "get_opportunity_summary", "get_project_risks",
     "get_unpaid_payments", "get_financial_summary", "get_freelancer_workload",
     "get_calendar_events", "get_notifications", "get_communication_history",
     "get_analytics_summary", "global_search",
@@ -99,7 +108,15 @@ def _validate_read_input(tool_name: str, payload: dict[str, Any]) -> None:
             or entity_types[0].lower() != entity_types[0]
         ):
             raise HTTPException(status_code=422, detail="Invalid entity type.")
-    elif tool_name == "get_tasks":
+    else:
+        for field_name, field_schema in tool.input_schema.get("properties", {}).items():
+            if field_schema.get("format") == "uuid" and field_name in payload:
+                try:
+                    UUID(str(payload[field_name]))
+                except (TypeError, ValueError) as exc:
+                    raise HTTPException(status_code=422, detail=f"{field_name} must be a valid UUID.") from exc
+
+    if tool_name == "get_tasks":
         if "status" in payload and not isinstance(payload["status"], str):
             raise HTTPException(status_code=422, detail="Task status must be text.")
         if "due_before" in payload:
@@ -151,11 +168,71 @@ def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, d
     if tool_name == "get_sales_pipeline":
         return [item.model_dump(mode="json") for item in sales_pipeline(current_user=current_user, db=db)]
     if tool_name == "get_prospect_followups":
-        return crm_pipeline(current_user=current_user, db=db)["prospects"]
+        prospects = crm_pipeline(current_user=current_user, db=db)["prospects"]
+        now = datetime.now(timezone.utc)
+        due = []
+        for prospect in prospects:
+            value = prospect.get("next_action_at")
+            if not value:
+                continue
+            due_at = datetime.fromisoformat(value) if isinstance(value, str) else value
+            if due_at.tzinfo is None:
+                due_at = due_at.replace(tzinfo=timezone.utc)
+            if due_at <= now:
+                due.append(prospect)
+        return due
+    if tool_name == "get_proposals":
+        return [
+            item.model_dump(mode="json")
+            for item in sales_pipeline(current_user=current_user, db=db)
+            if item.proposal_status is not None
+        ]
     if tool_name == "get_opportunities":
         return [item.model_dump(mode="json") for item in list_opportunities(current_user=current_user, db=db)]
     if tool_name == "get_projects":
         return [item.model_dump(mode="json") for item in list_projects(current_user=current_user, db=db)]
+    if tool_name == "get_project_milestones":
+        from app.projects.router import list_milestones as list_project_milestones
+
+        return [
+            item.model_dump(mode="json")
+            for item in list_project_milestones(
+                project_id=UUID(payload["project_id"]),
+                current_user=current_user,
+                db=db,
+            )
+        ]
+    if tool_name == "get_client_summary":
+        return get_client_workspace(
+            client_id=UUID(payload["client_id"]),
+            current_user=current_user,
+            db=db,
+        ).model_dump(mode="json")
+    if tool_name == "get_project_summary":
+        return project_workspace(
+            project_id=UUID(payload["project_id"]),
+            current_user=current_user,
+            db=db,
+        ).model_dump(mode="json")
+    if tool_name == "get_opportunity_summary":
+        opportunity_id = UUID(payload["opportunity_id"])
+        opportunities = list_opportunities(current_user=current_user, db=db)
+        match = next((item for item in opportunities if item.id == opportunity_id), None)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found.")
+        return match.model_dump(mode="json")
+    if tool_name == "get_project_risks":
+        projects = list_projects(current_user=current_user, db=db)
+        workspaces = [
+            project_workspace(project_id=item.id, current_user=current_user, db=db)
+            for item in projects[:100]
+        ]
+        return [
+            risk.model_dump(mode="json")
+            for workspace in workspaces
+            for risk in workspace.risks
+            if risk.status == "open"
+        ]
     if tool_name == "get_unpaid_payments":
         milestones = list_milestones(current_user=current_user, db=db)
         return [item.model_dump(mode="json") for item in milestones if item.status != "paid"]
