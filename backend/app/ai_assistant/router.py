@@ -71,7 +71,7 @@ def _validate_read_input(tool_name: str, payload: dict[str, Any]) -> None:
             try:
                 value = payload["due_before"]
                 if not isinstance(value, str):
-                    raise ValueError
+                    raise TypeError("due_before must be text")
                 if "T" not in value and " " not in value:
                     date.fromisoformat(value)
                 else:
