@@ -46,7 +46,10 @@ def _serialize_task(task: object) -> dict[str, Any]:
 def _validate_read_input(tool_name: str, payload: dict[str, Any]) -> None:
     registry = get_default_ai_tool_registry()
     tool = registry.require(tool_name)
-    AIReadWritePolicy(registry).validate_request(tool, payload)
+    try:
+        AIReadWritePolicy(registry).validate_request(tool, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if tool_name == "global_search":
         query = payload.get("query")
