@@ -17,6 +17,7 @@ from app.ai_assistant.router import (
     preview_ai_write,
 )
 from app.tasks.schemas import TaskResponse
+from app.calendar.schemas import CalendarEventResponse
 
 
 class FakeDB:
@@ -335,3 +336,95 @@ def test_write_preview_cannot_be_confirmed_by_another_user():
         )
 
     assert exc.value.status_code == 403
+
+
+def test_schedule_followup_preview_returns_linked_calendar_event():
+    user = user_with_permissions("calendar.events.create", "rules_engine.evaluate")
+    target_id = uuid4()
+    start = datetime.now(timezone.utc).replace(microsecond=0)
+    end = start.replace(minute=(start.minute + 30) % 60)
+    if end <= start:
+        end = start.replace(hour=(start.hour + 1) % 24)
+    invocation = AIWriteInvocation(
+        message="Schedule a follow-up with the prospect",
+        tool_name="schedule_followup",
+        input={
+            "target_type": "prospect",
+            "target_id": str(target_id),
+            "title": "Prospect follow-up",
+            "scheduled_at": start.isoformat(),
+            "end_at": end.isoformat(),
+        },
+    )
+    result = preview_ai_write(invocation, current_user=user)
+
+    assert result.response_type is AIResponseType.ACTION_PREVIEW
+    assert result.confirmation_required is True
+    assert result.data["calendar_event"]["event_type"] == "follow_up"
+    assert result.data["calendar_event"]["prospect_id"] == str(target_id)
+
+
+def test_confirmed_schedule_followup_uses_calendar_domain_service(monkeypatch):
+    user = user_with_permissions("calendar.events.create", "rules_engine.evaluate")
+    user.roles[0].name = "Founder"
+    db = FakeDB()
+    target_id = uuid4()
+    start = datetime.now(timezone.utc).replace(microsecond=0)
+    end = start.replace(hour=(start.hour + 1) % 24)
+    if end <= start:
+        end = start.replace(day=start.day + 1)
+    event_id = uuid4()
+    captured = {}
+    event = CalendarEventResponse(
+        id=event_id, company_id=user.company_id, event_type="follow_up",
+        title="Prospect follow-up", description=None, start_at=start, end_at=end,
+        all_day=False, status="scheduled", timezone="Asia/Kolkata", location=None,
+        meeting_url=None, owner_user_id=user.id, attendees=[], client_id=None,
+        contact_id=None, prospect_id=target_id, opportunity_id=None, project_id=None,
+        freelancer_id=None, task_id=None, entity_type=None, entity_id=None,
+        notes=None, reminders=[],
+    )
+
+    class FakeExecutor:
+        def __init__(self, session, *, failure_audit_session_factory):
+            self.last_audit_reference = "audit-calendar-create"
+        def execute(self, event, handler, **kwargs):
+            captured["event"] = event
+            return handler(**kwargs)
+
+    monkeypatch.setattr(ai_router, "evaluate_rules", lambda *args, **kwargs: SimpleNamespace(allowed=True, evaluations=[]))
+    monkeypatch.setattr(ai_router, "AIAuditedActionExecutor", FakeExecutor)
+    monkeypatch.setattr(ai_router, "create_event_record", lambda *args, **kwargs: event)
+    invocation = AIWriteInvocation(
+        message="Schedule a follow-up with the prospect",
+        tool_name="schedule_followup",
+        input={
+            "target_type": "prospect", "target_id": str(target_id),
+            "title": "Prospect follow-up", "scheduled_at": start.isoformat(),
+            "end_at": end.isoformat(),
+        },
+    )
+    preview = preview_ai_write(invocation, current_user=user)
+    result = confirm_ai_write(
+        AIWriteConfirmation(message=invocation.message, tool_name=invocation.tool_name, input=invocation.input, preview_id=preview.data["preview_id"]),
+        current_user=user, db=db,
+    )
+
+    assert result.response_type is AIResponseType.ACTION_RESULT
+    assert result.data["calendar_event"]["id"] == str(event_id)
+    assert result.records[0].entity_type == "calendar_event"
+    assert result.audit_reference == "audit-calendar-create"
+    assert captured["event"].target_entity_type == "calendar_event"
+    assert db.commits == 1
+
+
+def test_calendar_write_preview_rejects_invalid_event_window():
+    user = user_with_permissions("calendar.events.create", "rules_engine.evaluate")
+    start = datetime.now(timezone.utc).replace(microsecond=0)
+    invocation = AIWriteInvocation(
+        message="Schedule a follow-up", tool_name="schedule_followup",
+        input={"target_type": "prospect", "target_id": str(uuid4()), "title": "Follow up", "scheduled_at": start.isoformat(), "end_at": start.isoformat()},
+    )
+    with pytest.raises(HTTPException) as exc:
+        preview_ai_write(invocation, current_user=user)
+    assert exc.value.status_code == 422
