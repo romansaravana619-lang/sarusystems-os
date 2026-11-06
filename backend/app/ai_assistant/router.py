@@ -66,12 +66,15 @@ def _validate_read_input(tool_name: str, payload: dict[str, Any]) -> None:
             raise HTTPException(status_code=422, detail="Task status must be text.")
         if "due_before" in payload:
             try:
-                datetime.fromisoformat(payload["due_before"])
+                value = payload["due_before"]
+                if not isinstance(value, str):
+                    raise ValueError
+                if "T" not in value and " " not in value:
+                    date.fromisoformat(value)
+                else:
+                    datetime.fromisoformat(value)
             except (TypeError, ValueError) as exc:
-                try:
-                    date.fromisoformat(payload["due_before"])
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=422, detail="due_before must be an ISO date or datetime.") from exc
+                raise HTTPException(status_code=422, detail="due_before must be an ISO date or datetime.") from exc
 
 
 def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, db: Session):
@@ -88,10 +91,11 @@ def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, d
         if "status" in payload:
             tasks = [task for task in tasks if task.status == payload["status"]]
         if "due_before" in payload:
-            try:
-                boundary = datetime.fromisoformat(payload["due_before"])
-            except ValueError:
-                boundary = datetime.combine(date.fromisoformat(payload["due_before"]), time.max, tzinfo=timezone.utc)
+            value = payload["due_before"]
+            if "T" not in value and " " not in value:
+                boundary = datetime.combine(date.fromisoformat(value), time.max, tzinfo=timezone.utc)
+            else:
+                boundary = datetime.fromisoformat(value)
             if boundary.tzinfo is None:
                 boundary = boundary.replace(tzinfo=timezone.utc)
             tasks = [task for task in tasks if task.due_at is not None and task.due_at <= boundary]
@@ -123,6 +127,7 @@ def execute_ai_read(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AIResponse:
+    request = AIRequest(message=invocation.message, context=invocation.input)
     registry = get_default_ai_tool_registry()
     tool = registry.get(invocation.tool_name)
     if tool is None or tool.action_kind != AIActionKind.READ:
@@ -133,7 +138,7 @@ def execute_ai_read(
     decision = AIToolRBACPolicy().authorize_user(tool, current_user)
     if not decision.allowed:
         return AIResponse(
-            request_id=UUID(int=0),
+            request_id=request.request_id,
             intent=tool.name,
             response_type=AIResponseType.BLOCKED,
             summary="You do not have permission to access this information.",
@@ -141,7 +146,6 @@ def execute_ai_read(
         )
 
     _validate_read_input(tool.name, invocation.input)
-    request = AIRequest(message=invocation.message, context=invocation.input)
     orchestrator = AIOrchestrator(registry)
     result = orchestrator.execute_read(
         request,
