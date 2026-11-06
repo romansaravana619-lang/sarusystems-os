@@ -4,7 +4,7 @@ This first runtime slice exposes registered read capabilities only. It deliberat
 does not pretend to provide natural-language model inference or enable writes.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, time, timezone
 from typing import Any
 from uuid import UUID
 
@@ -52,13 +52,15 @@ def _validate_read_input(tool_name: str, payload: dict[str, Any]) -> None:
         query = payload.get("query")
         if not isinstance(query, str) or not 2 <= len(query.strip()) <= 120:
             raise HTTPException(status_code=422, detail="Search query must contain 2-120 characters.")
-        entity_type = payload.get("entity_type")
-        if entity_type is not None and (
-            not isinstance(entity_type, str)
-            or not entity_type.replace("_", "").isalnum()
-            or entity_type.lower() != entity_type
+        entity_types = payload.get("entity_types", [])
+        if not isinstance(entity_types, list) or len(entity_types) > 1:
+            raise HTTPException(status_code=422, detail="Select at most one entity type per search.")
+        if entity_types and (
+            not isinstance(entity_types[0], str)
+            or not entity_types[0].replace("_", "").isalnum()
+            or entity_types[0].lower() != entity_types[0]
         ):
-            raise HTTPException(status_code=422, detail="Invalid entity_type.")
+            raise HTTPException(status_code=422, detail="Invalid entity type.")
     elif tool_name == "get_tasks":
         if "status" in payload and not isinstance(payload["status"], str):
             raise HTTPException(status_code=422, detail="Task status must be text.")
@@ -76,7 +78,7 @@ def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, d
     if tool_name == "global_search":
         result = global_search(
             q=payload["query"].strip(),
-            entity_type=payload.get("entity_type"),
+            entity_type=(payload.get("entity_types") or [None])[0],
             current_user=current_user,
             db=db,
         )
@@ -86,9 +88,12 @@ def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, d
         if "status" in payload:
             tasks = [task for task in tasks if task.status == payload["status"]]
         if "due_before" in payload:
-            boundary = datetime.fromisoformat(payload["due_before"])
+            try:
+                boundary = datetime.fromisoformat(payload["due_before"])
+            except ValueError:
+                boundary = datetime.combine(date.fromisoformat(payload["due_before"]), time.max, tzinfo=timezone.utc)
             if boundary.tzinfo is None:
-                boundary = boundary.replace(tzinfo=current_user.created_at.tzinfo if getattr(current_user, "created_at", None) and current_user.created_at.tzinfo else None)
+                boundary = boundary.replace(tzinfo=timezone.utc)
             tasks = [task for task in tasks if task.due_at is not None and task.due_at <= boundary]
         return [_serialize_task(task) for task in tasks]
     raise HTTPException(status_code=501, detail="This registered AI read capability is not connected to an OS API yet.")
