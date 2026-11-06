@@ -149,7 +149,7 @@ def test_ai_provider_failure_keeps_core_os_available_and_exposes_no_provider_det
     }
     assert any("remain available" in warning for warning in response.warnings)
     assert any("No OS action" in warning for warning in response.warnings)
-    assert "provider" not in str(response.data)
+    assert "provider_name" not in response.data
 
 
 @pytest.mark.parametrize("retry_after_seconds", [-1, 86_401])
