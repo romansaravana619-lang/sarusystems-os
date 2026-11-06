@@ -4,6 +4,8 @@ from typing import Any, Callable, Protocol
 
 from .audit import AIAuditEvent
 from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
+from .business_rules import AIBusinessRuleDecision
+from .rbac import AIAuthorizationDecision
 from .read_write import AIReadWritePolicy
 from .registry import AIToolDefinition, AIToolRegistry
 from .safety import AISafetyDecision, canonical_payload_hash
@@ -68,6 +70,8 @@ class AIOrchestrator:
         payload: dict[str, Any],
         *,
         safety_decision: AISafetyDecision,
+        authorization_decision: AIAuthorizationDecision,
+        business_rule_decision: AIBusinessRuleDecision,
         audit_event: AIAuditEvent,
         handler: Callable[..., Any],
     ) -> Any:
@@ -91,7 +95,15 @@ class AIOrchestrator:
             raise PermissionError("A valid, consumed confirmation for this exact action is required")
 
         if (
-            audit_event.read_only
+            not authorization_decision.allowed
+            or authorization_decision.tool_name != tool_name
+            or authorization_decision.user_id != audit_event.user_id
+            or authorization_decision.company_id != audit_event.company_id
+            or not business_rule_decision.allowed
+            or business_rule_decision.blocked
+            or audit_event.permission_decision != authorization_decision.reason_code
+            or audit_event.business_rule_decision != business_rule_decision.reason_code
+            or audit_event.read_only
             or audit_event.request_id != request.request_id
             or audit_event.user_request != request.message
             or audit_event.tool_name != tool_name
