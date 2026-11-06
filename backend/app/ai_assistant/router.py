@@ -1,8 +1,4 @@
-"""Authenticated API adapter for the provider-neutral AI Assistant runtime.
-
-This first runtime slice exposes registered read capabilities only. It deliberately
-does not pretend to provide natural-language model inference or enable writes.
-"""
+"""Authenticated API adapter for the provider-neutral Founder AI Assistant runtime."""
 
 from dataclasses import replace
 from datetime import date, datetime, time, timezone
