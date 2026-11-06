@@ -263,7 +263,7 @@ def create_task(payload: TaskCreate, current_user: User = Depends(require_permis
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
-def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends(require_permission("tasks.edit")), db: Session = Depends(get_db)) -> Task:
+def update_task_record(task_id: UUID, payload: TaskUpdate, current_user: User, db: Session, *, commit: bool = True) -> Task:
     task = _task(db, current_user.company_id, task_id)
     values = payload.model_dump(exclude_unset=True)
     target_status = values.get("status", task.status)
@@ -297,9 +297,15 @@ def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends
     elif "status" in values:
         task.completed_at = None
     _audit(db, current_user, "task.update", "Task", task.id, "Updated task fields or lifecycle status")
-    db.commit()
-    db.refresh(task)
+    if commit:
+        db.commit()
+        db.refresh(task)
     return task
+
+
+@router.patch("/{task_id}", response_model=TaskResponse)
+def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends(require_permission("tasks.edit")), db: Session = Depends(get_db)) -> Task:
+    return update_task_record(task_id, payload, current_user, db)
 
 
 @router.post("/{task_id}/submit", response_model=TaskResponse)
