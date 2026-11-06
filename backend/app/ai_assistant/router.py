@@ -47,7 +47,7 @@ from .safety import AISafetyPolicy, AIWritePreview, canonical_payload_hash
 router = APIRouter(prefix="/ai-assistant", tags=["AI Assistant"])
 WRITE_REGISTRY = get_default_ai_tool_registry()
 WRITE_SAFETY_POLICY = AISafetyPolicy(WRITE_REGISTRY)
-PENDING_WRITE_PREVIEWS: dict[UUID, tuple[AIRequest, AIWritePreview]] = {}
+PENDING_WRITE_PREVIEWS: dict[UUID, tuple[AIRequest, AIWritePreview, UUID, UUID]] = {}
 PENDING_WRITE_LOCK = Lock()
 
 DOMAIN_PERMISSIONS = {
@@ -425,7 +425,7 @@ def preview_ai_write(
         raise HTTPException(status_code=422, detail="The task details are invalid. Review the required fields and try again.") from exc
 
     with PENDING_WRITE_LOCK:
-        PENDING_WRITE_PREVIEWS[preview.preview_id] = (request, preview)
+        PENDING_WRITE_PREVIEWS[preview.preview_id] = (request, preview, current_user.id, current_user.company_id)
 
     return AIResponse(
         request_id=request.request_id,
@@ -458,7 +458,9 @@ def confirm_ai_write(
     if pending is None:
         raise HTTPException(status_code=409, detail="This preview is no longer available. Prepare a new preview.")
 
-    request, preview = pending
+    request, preview, preview_user_id, preview_company_id = pending
+    if preview_user_id != current_user.id or preview_company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="This preview belongs to a different authenticated user.")
     if (
         confirmation.message != request.message
         or confirmation.tool_name != preview.tool_name
