@@ -44,7 +44,7 @@ class AIAuditedActionExecutor:
             )
             try:
                 self._recorder.record(self._db, failure_event)
-            except Exception as audit_error:
+            except Exception as audit_error:  # noqa: BLE001 - preserve the original action failure
                 error.add_note(
                     "The AI action failed and its audit event could not be flushed: "
                     f"{type(audit_error).__name__}"
