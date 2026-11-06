@@ -18,12 +18,20 @@ class FakeSession:
     def __init__(self) -> None:
         self.items = []
         self.flush_count = 0
+        self.commit_count = 0
+        self.close_count = 0
 
     def add(self, instance) -> None:
         self.items.append(instance)
 
     def flush(self) -> None:
         self.flush_count += 1
+
+    def commit(self) -> None:
+        self.commit_count += 1
+
+    def close(self) -> None:
+        self.close_count += 1
 
 
 def build_registry() -> AIToolRegistry:
@@ -94,7 +102,7 @@ def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> N
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
-    executor = AIAuditedActionExecutor(session)
+    executor = AIAuditedActionExecutor(session, failure_audit_session_factory=FakeSession)
     orchestrator = AIOrchestrator(registry, action_executor=executor)
     record_id = uuid4()
     calls = []
@@ -138,9 +146,13 @@ def test_orchestrator_records_sanitized_failure_and_reraises() -> None:
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
+    failure_session = FakeSession()
     orchestrator = AIOrchestrator(
         registry,
-        action_executor=AIAuditedActionExecutor(session),
+        action_executor=AIAuditedActionExecutor(
+            session,
+            failure_audit_session_factory=lambda: failure_session,
+        ),
     )
     event = build_context(request, payload)
     authorization, business_rules = approval_context(event)
@@ -160,11 +172,14 @@ def test_orchestrator_records_sanitized_failure_and_reraises() -> None:
             handler=handler,
         )
 
-    assert session.flush_count == 1
-    details = json.loads(session.items[0].details)
+    assert session.items == []
+    assert failure_session.flush_count == 1
+    assert failure_session.commit_count == 1
+    assert failure_session.close_count == 1
+    details = json.loads(failure_session.items[0].details)
     assert details["execution_result"] == "failed"
     assert details["failure_error"] == "RuntimeError"
-    assert "do-not-store-this" not in session.items[0].details
+    assert "do-not-store-this" not in failure_session.items[0].details
 
 
 def test_write_is_not_executed_without_valid_consumed_confirmation() -> None:
@@ -172,7 +187,7 @@ def test_write_is_not_executed_without_valid_consumed_confirmation() -> None:
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
-    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
+    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session, failure_audit_session_factory=FakeSession))
     called = False
 
     event = build_context(request, payload)
