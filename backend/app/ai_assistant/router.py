@@ -441,3 +441,190 @@ def preview_ai_write(
         confirmation_required=True,
         warnings=list(preview.warnings),
     )
+
+
+@router.post("/write/confirm", response_model=AIResponse)
+def confirm_ai_write(
+    confirmation: AIWriteConfirmation,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AIResponse:
+    tool = WRITE_REGISTRY.get(confirmation.tool_name)
+    if tool is None or tool.name != "create_task" or tool.action_kind != AIActionKind.WRITE:
+        raise HTTPException(status_code=404, detail="Confirmed write capability not found.")
+
+    with PENDING_WRITE_LOCK:
+        pending = PENDING_WRITE_PREVIEWS.get(confirmation.preview_id)
+    if pending is None:
+        raise HTTPException(status_code=409, detail="This preview is no longer available. Prepare a new preview.")
+
+    request, preview = pending
+    if (
+        confirmation.message != request.message
+        or confirmation.tool_name != preview.tool_name
+        or canonical_payload_hash(confirmation.input) != preview.payload_hash
+    ):
+        raise HTTPException(status_code=409, detail="The confirmed request does not exactly match the preview. Prepare a new preview.")
+
+    effective_tool = replace(
+        tool,
+        required_permission=DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission),
+    )
+    authorization = AIToolRBACPolicy().authorize_user(effective_tool, current_user)
+    if not authorization.allowed:
+        return AIResponse(
+            request_id=request.request_id,
+            intent=tool.name,
+            response_type=AIResponseType.BLOCKED,
+            summary="You do not have permission to create this record.",
+            error_code="permission_denied",
+        )
+
+    try:
+        task_payload = TaskCreate.model_validate(confirmation.input)
+        role_names = tuple(
+            role.name for role in current_user.roles
+            if getattr(role, "is_active", True)
+        )
+        rule_request = AIBusinessRuleRequest(
+            trigger_event="task.create",
+            applies_to="task",
+            action="create_task",
+            context=task_payload.model_dump(mode="json"),
+            user_id=current_user.id,
+            role_names=role_names,
+        )
+        business_decision = AIBusinessRulesPolicy().evaluate(
+            rule_request,
+            _ExistingRulesEngineEvaluator(current_user, db),
+        )
+    except HTTPException:
+        db.rollback()
+        return AIResponse(
+            request_id=request.request_id,
+            intent=tool.name,
+            response_type=AIResponseType.BLOCKED,
+            summary="The task cannot be created because the required authorization or business-rule check is unavailable.",
+            error_code="business_rule_check_unavailable",
+        )
+    except (ValueError, TypeError):
+        db.rollback()
+        raise HTTPException(status_code=422, detail="The confirmed task details are invalid.")
+
+    if business_decision.blocked:
+        event = AIAuditEvent(
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            request_id=request.request_id,
+            user_request=request.message,
+            normalized_intent=tool.use_case_key or tool.name,
+            tool_name=tool.name,
+            action_metadata={"task": task_payload.model_dump(mode="json")},
+            action_payload_hash=preview.payload_hash,
+            permission_decision="allowed",
+            business_rule_decision=business_decision.reason_code,
+            confirmation_state="confirmed",
+            execution_result="blocked",
+            read_only=False,
+        )
+        audit_reference = AIAuditRecorder().record(db, event)
+        db.commit()
+        with PENDING_WRITE_LOCK:
+            PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
+        return AIResponse(
+            request_id=request.request_id,
+            intent=tool.name,
+            response_type=AIResponseType.BLOCKED,
+            summary="The task creation was blocked by an active Saru Systems business rule.",
+            error_code="business_rule_blocked",
+            warnings=list(business_decision.warnings),
+            audit_reference=audit_reference,
+        )
+
+    try:
+        ticket = WRITE_SAFETY_POLICY.issue_confirmation(preview)
+        audit_event = AIAuditEvent(
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            request_id=request.request_id,
+            user_request=request.message,
+            normalized_intent=tool.use_case_key or tool.name,
+            tool_name=tool.name,
+            action_metadata={"task": task_payload.model_dump(mode="json")},
+            action_payload_hash=preview.payload_hash,
+            permission_decision="allowed",
+            business_rule_decision=business_decision.reason_code,
+            confirmation_state="confirmation_validated",
+            read_only=False,
+        )
+        executor = AIAuditedActionExecutor(
+            db,
+            failure_audit_session_factory=SessionLocal,
+        )
+        orchestrator = AIOrchestrator(
+            WRITE_REGISTRY,
+            action_executor=executor,
+            safety_policy=WRITE_SAFETY_POLICY,
+        )
+
+        def create_task_handler(request: AIRequest, context: dict[str, Any], payload: dict[str, Any]):
+            task = create_task_record(
+                TaskCreate.model_validate(payload),
+                current_user,
+                db,
+                commit=False,
+            )
+            return {
+                "record_id": str(task.id),
+                "resulting_record_ids": [str(task.id)],
+                "task": TaskResponse.model_validate(task).model_dump(mode="json"),
+            }
+
+        result = orchestrator.execute_write(
+            request,
+            tool.name,
+            confirmation.input,
+            confirmation_id=ticket.confirmation_id,
+            authorization_decision=authorization,
+            business_rule_decision=business_decision,
+            audit_event=audit_event,
+            handler=create_task_handler,
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        with PENDING_WRITE_LOCK:
+            PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
+        if isinstance(exc, PermissionError):
+            return AIResponse(
+                request_id=request.request_id,
+                intent=tool.name,
+                response_type=AIResponseType.BLOCKED,
+                summary="The task was not created because its confirmation or execution authorization was rejected.",
+                error_code="write_confirmation_rejected",
+            )
+        return AIResponse(
+            request_id=request.request_id,
+            intent=tool.name,
+            response_type=AIResponseType.ERROR,
+            summary="The task could not be created. No success is being reported.",
+            error_code="task_creation_failed",
+        )
+
+    with PENDING_WRITE_LOCK:
+        PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
+    task_data = result["task"]
+    record = AIRecordReference(
+        entity_type="task",
+        entity_id=UUID(result["record_id"]),
+        label=task_data["title"],
+    )
+    return AIResponse(
+        request_id=request.request_id,
+        intent=tool.name,
+        response_type=AIResponseType.ACTION_RESULT,
+        summary="The task was created successfully.",
+        data={"task": task_data},
+        records=[record],
+        audit_reference=executor.last_audit_reference,
+    )
