@@ -1,14 +1,20 @@
 """Provider-neutral AI orchestration boundary."""
 
 from typing import Any, Callable, Protocol
+from uuid import UUID
 
 from .audit import AIAuditEvent
-from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
 from .business_rules import AIBusinessRuleDecision
+from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
 from .rbac import AIAuthorizationDecision
 from .read_write import AIReadWritePolicy
 from .registry import AIToolDefinition, AIToolRegistry
-from .safety import AISafetyDecision, canonical_payload_hash
+from .safety import (
+    AIConfirmationTicket,
+    AISafetyPolicy,
+    AIWritePreview,
+    canonical_payload_hash,
+)
 
 
 class AuditedActionExecutor(Protocol):
@@ -26,8 +32,8 @@ class AIOrchestrator:
     """Coordinate intent selection and delegate approved execution.
 
     The orchestrator never receives a database session or writes to the database.
-    Meaningful write actions must pass safety, permission and business-rule checks,
-    then execute through the injected audited execution boundary.
+    Meaningful writes must pass its own confirmation policy, permission and
+    business-rule checks, then execute through the audited execution boundary.
     """
 
     def __init__(
@@ -35,9 +41,13 @@ class AIOrchestrator:
         registry: AIToolRegistry,
         *,
         action_executor: AuditedActionExecutor | None = None,
+        safety_policy: AISafetyPolicy | None = None,
     ) -> None:
         self.registry = registry
         self.action_executor = action_executor
+        self.safety_policy = safety_policy or AISafetyPolicy(registry)
+        if self.safety_policy.registry is not registry:
+            raise ValueError("The AI safety policy must use the orchestrator's tool registry")
 
     def validate_tool_selection(self, tool_name: str) -> AIToolDefinition:
         return self.registry.require(tool_name)
@@ -63,13 +73,29 @@ class AIOrchestrator:
             warnings=["Execution requires explicit confirmation and an audited domain handler."],
         )
 
+    def preview_write_action(
+        self,
+        request: AIRequest,
+        tool_name: str,
+        payload: dict[str, Any],
+    ) -> AIWritePreview:
+        """Create an exact-payload preview owned by this orchestrator's safety policy."""
+        return self.safety_policy.preview_write(request, tool_name, payload)
+
+    def issue_write_confirmation(
+        self,
+        preview: AIWritePreview,
+    ) -> AIConfirmationTicket:
+        """Issue a single-use ticket only for a preview created by this policy."""
+        return self.safety_policy.issue_confirmation(preview)
+
     def execute_write(
         self,
         request: AIRequest,
         tool_name: str,
         payload: dict[str, Any],
         *,
-        safety_decision: AISafetyDecision,
+        confirmation_id: UUID | None,
         authorization_decision: AIAuthorizationDecision,
         business_rule_decision: AIBusinessRuleDecision,
         audit_event: AIAuditEvent,
@@ -82,17 +108,8 @@ class AIOrchestrator:
 
         AIReadWritePolicy(self.registry).validate_request(tool, payload)
 
-        ticket = safety_decision.ticket
-        if (
-            not safety_decision.allowed
-            or not safety_decision.confirmation_required
-            or ticket is None
-            or not ticket.consumed
-            or ticket.request_id != request.request_id
-            or ticket.tool_name != tool_name
-            or ticket.payload_hash != canonical_payload_hash(payload)
-        ):
-            raise PermissionError("A valid, consumed confirmation for this exact action is required")
+        if self.action_executor is None:
+            raise RuntimeError("An audited action executor is required for AI write execution")
 
         if (
             not authorization_decision.allowed
@@ -115,8 +132,14 @@ class AIOrchestrator:
         ):
             raise PermissionError("The audit context does not match the approved action decisions")
 
-        if self.action_executor is None:
-            raise RuntimeError("An audited action executor is required for AI write execution")
+        safety_decision = self.safety_policy.authorize_write_execution(
+            request,
+            tool_name,
+            payload,
+            confirmation_id,
+        )
+        if not safety_decision.allowed or safety_decision.ticket is None:
+            raise PermissionError(f"AI write confirmation rejected: {safety_decision.reason}")
 
         return self.action_executor.execute(
             audit_event,

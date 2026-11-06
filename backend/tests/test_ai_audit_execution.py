@@ -11,7 +11,7 @@ from app.ai_assistant.execution import AIAuditedActionExecutor
 from app.ai_assistant.orchestrator import AIOrchestrator
 from app.ai_assistant.rbac import AIAuthorizationDecision
 from app.ai_assistant.registry import AIToolDefinition, AIToolRegistry
-from app.ai_assistant.safety import AISafetyPolicy, canonical_payload_hash
+from app.ai_assistant.safety import canonical_payload_hash
 
 
 class FakeSession:
@@ -73,12 +73,9 @@ def build_context(
     )
 
 
-def confirmed_decision(registry, request, payload):
-    policy = AISafetyPolicy(registry)
-    preview = policy.preview_write(request, "create_task", payload)
-    ticket = policy.issue_confirmation(preview)
-    decision = policy.confirm_write(request, "create_task", payload, ticket.confirmation_id)
-    return decision
+def confirmation_id(orchestrator: AIOrchestrator, request: AIRequest, payload: dict):
+    preview = orchestrator.preview_write_action(request, "create_task", payload)
+    return orchestrator.issue_write_confirmation(preview).confirmation_id
 
 
 def approval_context(event: AIAuditEvent):
@@ -114,6 +111,7 @@ def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> N
 
     event = build_context(request, payload)
     authorization, business_rules = approval_context(event)
+    ticket_id = confirmation_id(orchestrator, request, payload)
 
     def handler(**kwargs):
         calls.append(kwargs)
@@ -123,7 +121,7 @@ def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> N
         request,
         "create_task",
         payload,
-        safety_decision=confirmed_decision(registry, request, payload),
+        confirmation_id=ticket_id,
         authorization_decision=authorization,
         business_rule_decision=business_rules,
         audit_event=event,
@@ -161,6 +159,7 @@ def test_orchestrator_records_sanitized_failure_and_reraises() -> None:
     )
     event = build_context(request, payload)
     authorization, business_rules = approval_context(event)
+    ticket_id = confirmation_id(orchestrator, request, payload)
 
     def handler(**kwargs):
         raise RuntimeError("provider_secret=do-not-store-this")
@@ -170,7 +169,7 @@ def test_orchestrator_records_sanitized_failure_and_reraises() -> None:
             request,
             "create_task",
             payload,
-            safety_decision=confirmed_decision(registry, request, payload),
+            confirmation_id=ticket_id,
             authorization_decision=authorization,
             business_rule_decision=business_rules,
             audit_event=event,
@@ -187,14 +186,19 @@ def test_orchestrator_records_sanitized_failure_and_reraises() -> None:
     assert "do-not-store-this" not in failure_session.items[0].details
 
 
-def test_write_is_not_executed_without_valid_consumed_confirmation() -> None:
+def test_write_is_not_executed_without_confirmation() -> None:
     registry = build_registry()
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
-    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session, failure_audit_session_factory=FakeSession))
+    orchestrator = AIOrchestrator(
+        registry,
+        action_executor=AIAuditedActionExecutor(
+            session,
+            failure_audit_session_factory=FakeSession,
+        ),
+    )
     called = False
-
     event = build_context(request, payload)
     authorization, business_rules = approval_context(event)
 
@@ -202,12 +206,49 @@ def test_write_is_not_executed_without_valid_consumed_confirmation() -> None:
         nonlocal called
         called = True
 
-    with pytest.raises(PermissionError, match="valid, consumed confirmation"):
+    with pytest.raises(PermissionError, match="explicit_confirmation_required"):
         orchestrator.execute_write(
             request,
             "create_task",
             payload,
-            safety_decision=confirmed_decision(registry, request, {"title": "Different payload"}),
+            confirmation_id=None,
+            authorization_decision=authorization,
+            business_rule_decision=business_rules,
+            audit_event=event,
+            handler=handler,
+        )
+
+    assert called is False
+    assert session.items == []
+
+
+def test_write_is_not_executed_when_confirmation_payload_does_not_match() -> None:
+    registry = build_registry()
+    request = AIRequest(message="Create a task named Prepare proposal")
+    payload = {"title": "Prepare proposal"}
+    session = FakeSession()
+    orchestrator = AIOrchestrator(
+        registry,
+        action_executor=AIAuditedActionExecutor(
+            session,
+            failure_audit_session_factory=FakeSession,
+        ),
+    )
+    event = build_context(request, payload)
+    authorization, business_rules = approval_context(event)
+    ticket_id = confirmation_id(orchestrator, request, {"title": "Different payload"})
+    called = False
+
+    def handler(**kwargs):
+        nonlocal called
+        called = True
+
+    with pytest.raises(PermissionError, match="confirmation_payload_mismatch"):
+        orchestrator.execute_write(
+            request,
+            "create_task",
+            payload,
+            confirmation_id=ticket_id,
             authorization_decision=authorization,
             business_rule_decision=business_rules,
             audit_event=event,
@@ -223,10 +264,17 @@ def test_write_is_not_executed_when_audit_context_does_not_match_request() -> No
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
-    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session, failure_audit_session_factory=FakeSession))
+    orchestrator = AIOrchestrator(
+        registry,
+        action_executor=AIAuditedActionExecutor(
+            session,
+            failure_audit_session_factory=FakeSession,
+        ),
+    )
     called = False
     mismatched = build_context(AIRequest(message="Different request"), payload)
     authorization, business_rules = approval_context(mismatched)
+    ticket_id = confirmation_id(orchestrator, request, payload)
 
     def handler(**kwargs):
         nonlocal called
@@ -237,7 +285,7 @@ def test_write_is_not_executed_when_audit_context_does_not_match_request() -> No
             request,
             "create_task",
             payload,
-            safety_decision=confirmed_decision(registry, request, payload),
+            confirmation_id=ticket_id,
             authorization_decision=authorization,
             business_rule_decision=business_rules,
             audit_event=mismatched,
@@ -253,15 +301,23 @@ def test_read_only_event_cannot_be_used_for_write_execution() -> None:
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
-    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session, failure_audit_session_factory=FakeSession))
+    orchestrator = AIOrchestrator(
+        registry,
+        action_executor=AIAuditedActionExecutor(
+            session,
+            failure_audit_session_factory=FakeSession,
+        ),
+    )
     read_event = build_context(request, payload)
     authorization, business_rules = approval_context(read_event)
+    ticket_id = confirmation_id(orchestrator, request, payload)
+
     with pytest.raises(PermissionError, match="audit context"):
         orchestrator.execute_write(
             request,
             "create_task",
             payload,
-            safety_decision=confirmed_decision(registry, request, payload),
+            confirmation_id=ticket_id,
             authorization_decision=authorization,
             business_rule_decision=business_rules,
             audit_event=replace(read_event, read_only=True),
@@ -269,3 +325,51 @@ def test_read_only_event_cannot_be_used_for_write_execution() -> None:
         )
 
     assert session.items == []
+
+
+def test_confirmation_ticket_cannot_execute_twice_through_orchestrator() -> None:
+    registry = build_registry()
+    request = AIRequest(message="Create a task named Prepare proposal")
+    payload = {"title": "Prepare proposal"}
+    session = FakeSession()
+    orchestrator = AIOrchestrator(
+        registry,
+        action_executor=AIAuditedActionExecutor(
+            session,
+            failure_audit_session_factory=FakeSession,
+        ),
+    )
+    event = build_context(request, payload)
+    authorization, business_rules = approval_context(event)
+    ticket_id = confirmation_id(orchestrator, request, payload)
+    calls = []
+
+    def handler(**kwargs):
+        calls.append(kwargs)
+        return {"record_id": str(uuid4())}
+
+    arguments = {
+        "request": request,
+        "tool_name": "create_task",
+        "payload": payload,
+        "confirmation_id": ticket_id,
+        "authorization_decision": authorization,
+        "business_rule_decision": business_rules,
+        "audit_event": event,
+        "handler": handler,
+    }
+    orchestrator.execute_write(**arguments)
+    with pytest.raises(PermissionError, match="confirmation_already_used"):
+        orchestrator.execute_write(**arguments)
+
+    assert len(calls) == 1
+    assert session.flush_count == 1
+
+
+def test_orchestrator_rejects_a_safety_policy_bound_to_another_registry() -> None:
+    from app.ai_assistant.safety import AISafetyPolicy
+
+    registry = build_registry()
+    other_registry = build_registry()
+    with pytest.raises(ValueError, match="tool registry"):
+        AIOrchestrator(registry, safety_policy=AISafetyPolicy(other_registry))
