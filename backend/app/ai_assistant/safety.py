@@ -76,7 +76,7 @@ def _validate_json_value(value: Any, path: str) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
             if not isinstance(key, str):
-                raise ValueError(f"{path} object keys must be strings")
+                raise TypeError(f"{path} object keys must be strings")
             _validate_json_value(item, f"{path}.{key}")
         return
     raise ValueError(f"{path} contains a value that is not JSON serializable")
