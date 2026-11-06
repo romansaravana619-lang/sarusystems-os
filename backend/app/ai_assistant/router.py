@@ -6,6 +6,7 @@ does not pretend to provide natural-language model inference or enable writes.
 
 from dataclasses import replace
 from datetime import date, datetime, time, timezone
+from threading import Lock
 from typing import Any
 from uuid import UUID
 
@@ -25,20 +26,29 @@ from app.freelancers.router import workspace as freelancer_workspace
 from app.notifications.router import list_notifications
 from app.projects.router import list_projects, workspace as project_workspace
 from app.sales.router import pipeline as sales_pipeline
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.global_search.router import search as global_search
 from app.shared.models import User
-from app.tasks.router import list_tasks
-from app.tasks.schemas import TaskResponse
+from app.tasks.router import create_task_record, list_tasks
+from app.tasks.schemas import TaskCreate, TaskResponse
+from app.rules.router import evaluate_rules
+from app.rules.schemas import RuleEvaluateRequest
 
 from .audit import AIAuditEvent, AIAuditRecorder
+from .business_rules import AIBusinessRuleRequest, AIBusinessRulesPolicy
+from .execution import AIAuditedActionExecutor
 from .contracts import AIActionKind, AIRequest, AIRecordReference, AIResponse, AIResponseType
 from .orchestrator import AIOrchestrator
 from .rbac import AIToolRBACPolicy
 from .read_write import AIReadWritePolicy
 from .registry import get_default_ai_tool_registry
+from .safety import AISafetyPolicy, AIWritePreview, canonical_payload_hash
 
 router = APIRouter(prefix="/ai-assistant", tags=["AI Assistant"])
+WRITE_REGISTRY = get_default_ai_tool_registry()
+WRITE_SAFETY_POLICY = AISafetyPolicy(WRITE_REGISTRY)
+PENDING_WRITE_PREVIEWS: dict[UUID, tuple[AIRequest, AIWritePreview]] = {}
+PENDING_WRITE_LOCK = Lock()
 
 DOMAIN_PERMISSIONS = {
     "get_today_attention": "command_center.view",
