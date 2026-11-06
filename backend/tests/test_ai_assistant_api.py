@@ -154,4 +154,4 @@ def test_read_input_rejects_unknown_fields_before_tool_execution(monkeypatch):
             db=FakeDB(),
         )
 
-    assert exc.value.status_code == 400
+    assert exc.value.status_code == 422
