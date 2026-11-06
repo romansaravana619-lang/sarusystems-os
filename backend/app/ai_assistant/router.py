@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.analytics.router import dashboard as analytics_dashboard
-from app.calendar.router import list_events
+from app.calendar.router import create_event_record, list_events
+from app.calendar.schemas import CalendarEventCreate
 from app.clients.router import get_workspace as get_client_workspace
 from app.command_center.router import get_command_center
 from app.communication.router import list_activities
@@ -52,6 +53,8 @@ PENDING_WRITE_PREVIEWS: dict[UUID, tuple[AIRequest, AIWritePreview, UUID, UUID, 
 PENDING_WRITE_LOCK = Lock()
 
 DOMAIN_PERMISSIONS = {
+    "create_founder_reminder": "calendar.events.create",
+    "schedule_followup": "calendar.events.create",
     "get_today_attention": "command_center.view",
     "get_tasks": "tasks.view",
     "get_followups": "crm.followups.view",
@@ -283,7 +286,7 @@ def list_ai_read_tools(current_user: User = Depends(get_current_user)) -> dict[s
             })
     write_available = []
     for tool in registry.list(AIActionKind.WRITE):
-        if tool.name not in {"create_task", "create_followup"}:
+        if tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder"}:
             continue
         effective_tool = replace(
             tool,
@@ -497,7 +500,7 @@ def confirm_ai_write(
     db: Session = Depends(get_db),
 ) -> AIResponse:
     tool = WRITE_REGISTRY.get(confirmation.tool_name)
-    if tool is None or tool.name not in {"create_task", "create_followup"} or tool.action_kind != AIActionKind.WRITE:
+    if tool is None or tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder"} or tool.action_kind != AIActionKind.WRITE:
         raise HTTPException(status_code=404, detail="Confirmed write capability not found.")
 
     with PENDING_WRITE_LOCK:
