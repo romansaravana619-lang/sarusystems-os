@@ -307,11 +307,6 @@ def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends
     return update_task_record(task_id, payload, current_user, db)
 
 
-@router.patch("/{task_id}", response_model=TaskResponse)
-def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends(require_permission("tasks.edit")), db: Session = Depends(get_db)) -> Task:
-    return update_task_record(task_id, payload, current_user, db)
-
-
 @router.post("/{task_id}/submit", response_model=TaskResponse)
 def submit_task(task_id: UUID, current_user: User = Depends(require_permission("tasks.submit")), db: Session = Depends(get_db)) -> Task:
     task = _task(db, current_user.company_id, task_id)
