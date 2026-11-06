@@ -8,10 +8,33 @@ provider credentials or unnecessary secrets.
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
+import re
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from app.shared.models import AuditLog
+
+_SENSITIVE_KEY_PARTS = (
+    "password", "secret", "token", "apikey", "credential", "authorization", "privatekey"
+)
+_SENSITIVE_TEXT = re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)\s*[:=]\s*([^\s,;]+)")
+
+
+def _safe_metadata(value: Any) -> Any:
+    """Remove secret-bearing metadata keys recursively before audit serialization."""
+    if isinstance(value, dict):
+        safe = {}
+        for key, item in value.items():
+            normalized_key = str(key).lower().replace("_", "").replace("-", "")
+            if any(part in normalized_key for part in _SENSITIVE_KEY_PARTS):
+                continue
+            safe[str(key)] = _safe_metadata(item)
+        return safe
+    if isinstance(value, (list, tuple)):
+        return [_safe_metadata(item) for item in value]
+    if isinstance(value, str):
+        return _SENSITIVE_TEXT.sub(r"\1=[REDACTED]", value)
+    return value
 
 
 class AuditSession(Protocol):
@@ -33,6 +56,7 @@ class AIAuditEvent:
     target_entity_type: str | None = None
     target_entity_id: UUID | None = None
     action_metadata: dict[str, Any] = field(default_factory=dict)
+    action_payload_hash: str | None = None
     permission_decision: str | None = None
     business_rule_decision: str | None = None
     confirmation_state: str | None = None
@@ -49,12 +73,13 @@ class AIAuditEvent:
             "company_id": str(self.company_id),
             "request_id": str(self.request_id),
             "timestamp": self.timestamp.isoformat(),
-            "user_request": self.user_request,
+            "user_request": _safe_metadata(self.user_request),
             "normalized_intent": self.normalized_intent,
             "tool_name": self.tool_name,
             "target_entity_type": self.target_entity_type,
             "target_entity_id": str(self.target_entity_id) if self.target_entity_id else None,
-            "action_metadata": self.action_metadata,
+            "action_metadata": _safe_metadata(self.action_metadata),
+            "action_payload_hash": self.action_payload_hash,
             "permission_decision": self.permission_decision,
             "business_rule_decision": self.business_rule_decision,
             "confirmation_state": self.confirmation_state,

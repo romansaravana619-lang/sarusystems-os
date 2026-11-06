@@ -1,6 +1,7 @@
 """SaruSystems OS AI Company Assistant domain foundation."""
 
 from .audit import AIAuditEvent, AIAuditRecorder, record_ai_audit
+from .execution import AIAuditedActionExecutor
 from .business_rules import (
     AIBusinessRuleDecision,
     AIBusinessRuleRequest,
@@ -72,6 +73,7 @@ __all__ = [
     "AISearchResult",
     "resolve_ai_entity",
     "AIAuditEvent",
+    "AIAuditedActionExecutor",
     "AIAuditRecorder",
     "record_ai_audit",
     "AIConfirmationTicket",
