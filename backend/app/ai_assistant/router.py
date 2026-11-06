@@ -100,6 +100,26 @@ class AIReadInvocation(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
 
 
+def _activity_payload(values: dict[str, Any], current_user: User) -> dict[str, Any]:
+    payload = {
+        "activity_type": values["activity_type"],
+        "summary": values["summary"],
+        "subject": values.get("subject"),
+        "direction": values.get("direction", "internal"),
+        "occurred_at": values.get("occurred_at") or datetime.now(timezone.utc).isoformat(),
+        "actor_user_id": current_user.id,
+    }
+    target_type = values.get("target_type")
+    target_id = values.get("target_id")
+    if bool(target_type) != bool(target_id):
+        raise ValueError("target_type and target_id must be provided together")
+    if target_type and target_id:
+        payload[f"{target_type}_id"] = UUID(target_id)
+        payload["entity_type"] = target_type
+        payload["entity_id"] = target_id
+    return ActivityCreate.model_validate(payload).model_dump(mode="json")
+
+
 def _serialize_task(task: object) -> dict[str, Any]:
     return TaskResponse.model_validate(task).model_dump(mode="json")
 
@@ -458,8 +478,7 @@ def preview_ai_write(
             preview_payload = FollowUpCreate.model_validate(followup_input).model_dump(mode="json")
             action_label = "Create CRM follow-up"
         elif tool.name == "record_activity":
-            activity_payload = {**invocation.input, "occurred_at": invocation.input.get("occurred_at") or datetime.now(timezone.utc).isoformat(), "actor_user_id": current_user.id}
-            preview_payload = ActivityCreate.model_validate(activity_payload).model_dump(mode="json")
+            preview_payload = _activity_payload(invocation.input, current_user)
             action_label = "Record activity"
         elif tool.name == "create_notification":
             notification_payload = {"recipient_user_id": invocation.input["recipient_id"], "notification_type": "general", "channel": "in_app", "priority": invocation.input.get("priority", "normal"), "title": invocation.input["title"], "message": invocation.input.get("body") or invocation.input["title"]}
@@ -470,8 +489,7 @@ def preview_ai_write(
             preview_payload = {"task_id": invocation.input["task_id"], **update_payload}
             action_label = "Update task"
         elif tool.name == "record_activity":
-            activity_payload = {**confirmation.input, "occurred_at": confirmation.input.get("occurred_at") or datetime.now(timezone.utc).isoformat(), "actor_user_id": current_user.id}
-            action_payload = ActivityCreate.model_validate(activity_payload).model_dump(mode="json")
+            action_payload = _activity_payload(confirmation.input, current_user)
             target_entity_type = confirmation.input.get("entity_type") or "activity"
             target_entity_id = UUID(confirmation.input["entity_id"]) if confirmation.input.get("entity_id") else None
             rule_trigger, rule_applies_to, action_name = "communication.activity.create", "activity", "record_activity"
