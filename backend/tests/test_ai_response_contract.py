@@ -127,7 +127,7 @@ def test_response_type_invariants_are_enforced_at_model_boundary() -> None:
             confirmation_required=False,
         )
 
-    with pytest.raises(ValidationError, match="only action preview"):
+    with pytest.raises(ValidationError, match="Only action preview"):
         AIResponse(
             request_id=uuid4(),
             response_type=AIResponseType.ANSWER,
