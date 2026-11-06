@@ -697,7 +697,7 @@ def confirm_ai_write(
         def create_record_handler(request: AIRequest, context: dict[str, Any], payload: dict[str, Any]):
             if tool.name == "create_task":
                 record = create_task_record(
-                    TaskCreate.model_validate(payload),
+                    TaskCreate.model_validate(action_payload),
                     current_user,
                     db,
                     commit=False,
@@ -706,7 +706,7 @@ def confirm_ai_write(
                 response_data = TaskResponse.model_validate(record).model_dump(mode="json")
             elif tool.name == "create_followup":
                 record = create_follow_up_record(
-                    FollowUpCreate.model_validate(payload),
+                    FollowUpCreate.model_validate(action_payload),
                     current_user,
                     db,
                     commit=False,
@@ -715,7 +715,7 @@ def confirm_ai_write(
                 response_data = FollowUpResponse.model_validate(record).model_dump(mode="json")
             else:
                 record = create_event_record(
-                    CalendarEventCreate.model_validate(payload),
+                    CalendarEventCreate.model_validate(action_payload),
                     current_user,
                     db,
                     commit=False,
