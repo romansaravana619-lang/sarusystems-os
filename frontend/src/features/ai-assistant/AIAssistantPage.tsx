@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 
-import { listAIAssistantTools, runAIAssistantRead, type AIAssistantResponse, type AIAssistantTool } from "./assistantApi";
+import {
+  confirmAIAssistantWrite,
+  listAIAssistantTools,
+  previewAIAssistantWrite,
+  runAIAssistantRead,
+  type AIAssistantResponse,
+  type AIAssistantTool,
+} from "./assistantApi";
 
 type Props = { token: string };
 
@@ -12,6 +19,11 @@ function displayValue(value: unknown): string {
 
 export default function AIAssistantPage({ token }: Props) {
   const [tools, setTools] = useState<AIAssistantTool[]>([]);
+  const [writeTools, setWriteTools] = useState<AIAssistantTool[]>([]);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskPriority, setTaskPriority] = useState("medium");
+  const [writePreview, setWritePreview] = useState<AIAssistantResponse | null>(null);
+  const [writeLoading, setWriteLoading] = useState(false);
   const [selectedTool, setSelectedTool] = useState("global_search");
   const [query, setQuery] = useState("");
   const [entityType, setEntityType] = useState("");
@@ -26,6 +38,7 @@ export default function AIAssistantPage({ token }: Props) {
       .then((result) => {
         if (!active) return;
         setTools(result.tools);
+        setWriteTools(result.write_tools ?? []);
         if (result.tools.length) {
           setSelectedTool((current) => result.tools.some((tool) => tool.name === current) ? current : result.tools[0].name);
         }
@@ -73,13 +86,62 @@ export default function AIAssistantPage({ token }: Props) {
     }
   }
 
+  async function previewTaskCreation() {
+    if (!taskTitle.trim()) {
+      setError("Enter a task title before previewing.");
+      return;
+    }
+    const payload = { title: taskTitle.trim(), priority: taskPriority };
+    const message = `Create a task: ${taskTitle.trim()}`;
+    setWriteLoading(true);
+    setError("");
+    setWritePreview(null);
+    try {
+      const result = await previewAIAssistantWrite(token, {
+        message,
+        tool_name: "create_task",
+        input: payload,
+      });
+      setWritePreview(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The task preview failed.");
+    } finally {
+      setWriteLoading(false);
+    }
+  }
+
+  async function confirmTaskCreation() {
+    const previewId = writePreview?.data.preview_id;
+    if (!previewId) return;
+    const payload = { title: taskTitle.trim(), priority: taskPriority };
+    const message = `Create a task: ${taskTitle.trim()}`;
+    setWriteLoading(true);
+    setError("");
+    try {
+      const result = await confirmAIAssistantWrite(token, {
+        message,
+        tool_name: "create_task",
+        input: payload,
+        preview_id: previewId,
+      });
+      setWritePreview(result);
+      if (result.response_type === "action_result") {
+        setTaskTitle("");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The task could not be confirmed.");
+    } finally {
+      setWriteLoading(false);
+    }
+  }
+
   return (
     <section className="ai-assistant-page">
       <header className="ai-assistant-hero">
         <div>
           <p className="eyebrow">SARU SYSTEMS · INTELLIGENCE</p>
           <h2>Founder AI Assistant</h2>
-          <p>Search company records and retrieve permitted OS information from one workspace.</p>
+          <p>Retrieve permitted company information and perform confirmed Founder actions through existing OS workflows.</p>
         </div>
         <span className="ai-runtime-status"><i /> Connected to OS</span>
       </header>
@@ -99,6 +161,12 @@ export default function AIAssistantPage({ token }: Props) {
             </button>
           ))}
           {!toolsLoading && !tools.length ? <p className="ai-muted">No read capabilities are available for this account.</p> : null}
+          {writeTools.map((tool) => (
+            <div className="ai-tool-option" key={tool.name}>
+              <strong>{tool.name.replaceAll("_", " ")}</strong>
+              <span>{tool.purpose}</span>
+            </div>
+          ))}
           <p className="ai-runtime-note">AI provider inference is not connected in this phase. Requests use registered, permission-checked OS tools.</p>
         </aside>
 
@@ -138,6 +206,39 @@ export default function AIAssistantPage({ token }: Props) {
               <button className="primary-button" type="button" disabled={loading} onClick={() => void submit(tools.find((tool) => tool.name === selectedTool)?.purpose ?? "Run this read query.")}>{loading ? "Loading…" : "Run query"}</button>
             </div>
           )}
+
+          {writeTools.some((tool) => tool.name === "create_task") ? (
+            <section className="ai-result-panel ai-write-panel">
+              <div className="ai-result-heading">
+                <div><p className="eyebrow">CONFIRMATION-PROTECTED ACTION</p><h3>Create a task</h3></div>
+                <span>Founder approval required</span>
+              </div>
+              <div className="ai-assistant-composer">
+                <label htmlFor="ai-task-title">Task title</label>
+                <input id="ai-task-title" value={taskTitle} onChange={(event) => { setTaskTitle(event.target.value); setWritePreview(null); }} placeholder="e.g. Follow up with the restaurant client" />
+                <label htmlFor="ai-task-priority">Priority</label>
+                <select id="ai-task-priority" value={taskPriority} onChange={(event) => { setTaskPriority(event.target.value); setWritePreview(null); }}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+                <button className="primary-button" type="button" disabled={writeLoading} onClick={() => void previewTaskCreation()}>{writeLoading ? "Preparing preview…" : "Preview task"}</button>
+              </div>
+              {writePreview ? (
+                <div className="ai-write-confirmation">
+                  <p><strong>{writePreview.summary}</strong></p>
+                  <p className="ai-muted">Title: {displayValue(writePreview.data.task?.title)} · Priority: {displayValue(writePreview.data.task?.priority)}</p>
+                  {writePreview.response_type === "action_preview" ? (
+                    <button className="primary-button" type="button" disabled={writeLoading} onClick={() => void confirmTaskCreation()}>{writeLoading ? "Creating…" : "Confirm & create task"}</button>
+                  ) : null}
+                  {writePreview.response_type === "action_result" ? <p className="success-message">Task created. Audit reference: {writePreview.audit_reference ?? "—"}</p> : null}
+                  {writePreview.warnings.map((warning) => <p className="ai-muted" key={warning}>{warning}</p>)}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {error ? <p className="ai-error" role="alert">{error}</p> : null}
           {response ? (
