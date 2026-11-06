@@ -20,7 +20,7 @@ from app.calendar.router import list_events
 from app.clients.router import get_workspace as get_client_workspace
 from app.command_center.router import get_command_center
 from app.communication.router import list_activities
-from app.crm.router import crm_pipeline, list_follow_ups, list_opportunities
+from app.crm.router import create_follow_up_record, crm_pipeline, list_follow_ups, list_opportunities
 from app.finance.router import dashboard as finance_dashboard, list_milestones
 from app.freelancers.router import workspace as freelancer_workspace
 from app.notifications.router import list_notifications
@@ -31,6 +31,7 @@ from app.global_search.router import search as global_search
 from app.shared.models import User
 from app.tasks.router import create_task_record, list_tasks
 from app.tasks.schemas import TaskCreate, TaskResponse
+from app.crm.schemas import FollowUpCreate, FollowUpResponse
 from app.rules.router import evaluate_rules
 from app.rules.schemas import RuleEvaluateRequest
 
@@ -282,7 +283,7 @@ def list_ai_read_tools(current_user: User = Depends(get_current_user)) -> dict[s
             })
     write_available = []
     for tool in registry.list(AIActionKind.WRITE):
-        if tool.name != "create_task":
+        if tool.name not in {"create_task", "create_followup"}:
             continue
         effective_tool = replace(
             tool,
@@ -434,7 +435,20 @@ def preview_ai_write(
 
     try:
         AIReadWritePolicy(WRITE_REGISTRY).validate_request(tool, invocation.input)
-        task_payload = TaskCreate.model_validate(invocation.input)
+        if tool.name == "create_task":
+            preview_payload = TaskCreate.model_validate(invocation.input).model_dump(mode="json")
+            action_label = "Create task"
+        else:
+            target_field = "prospect_id" if invocation.input["target_type"] == "prospect" else "contact_id"
+            followup_input = {
+                target_field: UUID(invocation.input["target_id"]),
+                "owner_user_id": current_user.id,
+                "title": invocation.input["title"],
+                "due_at": invocation.input["due_at"],
+                "notes": invocation.input.get("notes"),
+            }
+            preview_payload = FollowUpCreate.model_validate(followup_input).model_dump(mode="json")
+            action_label = "Create CRM follow-up"
         request = AIRequest(message=invocation.message, context=invocation.input)
         preview = WRITE_SAFETY_POLICY.preview_write(request, tool.name, invocation.input)
     except (ValueError, TypeError) as exc:
@@ -466,8 +480,8 @@ def preview_ai_write(
         summary=preview.summary,
         data={
             "preview_id": str(preview.preview_id),
-            "action": "Create task",
-            "task": task_payload.model_dump(mode="json"),
+            "action": action_label,
+            "payload": preview_payload,
         },
         actions_available=["confirm_create_task"],
         confirmation_required=True,
@@ -482,7 +496,7 @@ def confirm_ai_write(
     db: Session = Depends(get_db),
 ) -> AIResponse:
     tool = WRITE_REGISTRY.get(confirmation.tool_name)
-    if tool is None or tool.name != "create_task" or tool.action_kind != AIActionKind.WRITE:
+    if tool is None or tool.name not in {"create_task", "create_followup"} or tool.action_kind != AIActionKind.WRITE:
         raise HTTPException(status_code=404, detail="Confirmed write capability not found.")
 
     with PENDING_WRITE_LOCK:
