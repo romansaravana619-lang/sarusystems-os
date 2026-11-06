@@ -4,6 +4,7 @@ This first runtime slice exposes registered read capabilities only. It deliberat
 does not pretend to provide natural-language model inference or enable writes.
 """
 
+from dataclasses import replace
 from datetime import date, datetime, time, timezone
 from typing import Any
 from uuid import UUID
@@ -181,10 +182,12 @@ def list_ai_read_tools(current_user: User = Depends(get_current_user)) -> dict[s
     for tool in registry.list(AIActionKind.READ):
         if tool.name not in READ_HANDLERS:
             continue
-        decision = policy.authorize_user(tool, current_user)
-        required_permission = DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission)
-        has_domain_permission = required_permission is None or required_permission in policy.permission_codes_from_user(current_user)
-        if decision.allowed and has_domain_permission:
+        effective_tool = replace(
+            tool,
+            required_permission=DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission),
+        )
+        decision = policy.authorize_user(effective_tool, current_user)
+        if decision.allowed:
             available.append({
                 "name": tool.name,
                 "purpose": tool.purpose,
@@ -207,9 +210,12 @@ def execute_ai_read(
     if tool.name not in READ_HANDLERS:
         raise HTTPException(status_code=501, detail="This registered AI read capability is not connected to an OS API yet.")
 
-    decision = AIToolRBACPolicy().authorize_user(tool, current_user)
-    required_permission = DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission)
-    if not decision.allowed or (required_permission is not None and required_permission not in AIToolRBACPolicy.permission_codes_from_user(current_user)):
+    effective_tool = replace(
+        tool,
+        required_permission=DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission),
+    )
+    decision = AIToolRBACPolicy().authorize_user(effective_tool, current_user)
+    if not decision.allowed:
         return AIResponse(
             request_id=request.request_id,
             intent=tool.name,
