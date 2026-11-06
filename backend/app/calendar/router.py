@@ -115,8 +115,14 @@ def get_event(event_id: UUID, current_user: User = Depends(require_permission("c
     return _response(db, _event(db, current_user.company_id, event_id))
 
 
-@router.post("/events", response_model=CalendarEventResponse, status_code=status.HTTP_201_CREATED)
-def create_event(payload: CalendarEventCreate, current_user: User = Depends(require_permission("calendar.events.create")), db: Session = Depends(get_db)):
+def create_event_record(
+    payload: CalendarEventCreate,
+    current_user: User,
+    db: Session,
+    *,
+    commit: bool = True,
+) -> CalendarEventResponse:
+    """Create a company-scoped calendar event through the validated domain workflow."""
     values = payload.model_dump(exclude={"reminders"})
     values["owner_user_id"] = values.get("owner_user_id") or current_user.id
     _validate_links(db, current_user.company_id, values)
@@ -126,9 +132,15 @@ def create_event(payload: CalendarEventCreate, current_user: User = Depends(requ
     db.flush()
     _create_reminders(db, event, payload.reminders)
     _audit(db, current_user, "calendar.event.create", event)
-    db.commit()
-    db.refresh(event)
+    if commit:
+        db.commit()
+        db.refresh(event)
     return _response(db, event)
+
+
+@router.post("/events", response_model=CalendarEventResponse, status_code=status.HTTP_201_CREATED)
+def create_event(payload: CalendarEventCreate, current_user: User = Depends(require_permission("calendar.events.create")), db: Session = Depends(get_db)):
+    return create_event_record(payload, current_user, db)
 
 
 @router.patch("/events/{event_id}", response_model=CalendarEventResponse)

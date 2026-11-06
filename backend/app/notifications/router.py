@@ -39,8 +39,7 @@ def list_notifications(unread_only: bool = False, notification_type: str | None 
     if priority: query = query.where(Notification.priority == priority)
     return list(db.scalars(query.order_by(Notification.created_at.desc()).limit(limit)).all())
 
-@router.post("", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED)
-def create_notification(payload: NotificationCreate, current_user: User = Depends(require_permission("notifications.create")), db: Session = Depends(get_db)):
+def create_notification_record(payload: NotificationCreate, current_user: User, db: Session, *, commit: bool = True) -> Notification:
     recipient = db.scalar(select(User).where(User.id == payload.recipient_user_id, User.company_id == current_user.company_id))
     if recipient is None: raise HTTPException(400, "Recipient must belong to this company.")
     enabled = _preference_enabled(db, current_user.company_id, recipient.id, payload.notification_type, payload.channel)
@@ -48,8 +47,14 @@ def create_notification(payload: NotificationCreate, current_user: User = Depend
     scheduled = payload.scheduled_for
     now = datetime.now(timezone.utc)
     item = Notification(company_id=current_user.company_id, recipient_user_id=recipient.id, notification_type=payload.notification_type, channel=payload.channel, priority=payload.priority, title=payload.title, message=payload.message, scheduled_for=scheduled, status="pending" if scheduled and scheduled > now else ("sent" if payload.channel == "email" else "unread"), sent_at=None if scheduled and scheduled > now else now, source_type=payload.source_type, source_id=payload.source_id, action_url=payload.action_url, payload=payload.payload)
-    db.add(item); db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="notification.create", entity_type="Notification", entity_id=str(item.id), details=item.title)); db.commit(); db.refresh(item)
+    db.add(item); db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="notification.create", entity_type="Notification", entity_id=str(item.id), details=item.title))
+    if commit:
+        db.commit(); db.refresh(item)
     return item
+
+@router.post("", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED)
+def create_notification(payload: NotificationCreate, current_user: User = Depends(require_permission("notifications.create")), db: Session = Depends(get_db)):
+    return create_notification_record(payload, current_user, db)
 
 @router.patch("/{notification_id}/read", response_model=NotificationResponse)
 def mark_read(notification_id: UUID, current_user: User = Depends(require_permission("notifications.manage")), db: Session = Depends(get_db)):

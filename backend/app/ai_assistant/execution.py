@@ -33,6 +33,7 @@ class AIAuditedActionExecutor:
         self._db = db
         self._failure_audit_session_factory = failure_audit_session_factory
         self._recorder = recorder or AIAuditRecorder()
+        self.last_audit_reference: str | None = None
 
     def execute(
         self,
@@ -86,7 +87,7 @@ class AIAuditedActionExecutor:
             failure_error=None,
             resulting_record_ids=self._resulting_record_ids(result),
         )
-        self._recorder.record(self._db, success_event)
+        self.last_audit_reference = self._recorder.record(self._db, success_event)
         return result
 
     @staticmethod

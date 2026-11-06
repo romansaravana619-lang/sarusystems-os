@@ -174,7 +174,7 @@ def test_payload_schema_validates_types_and_uuid_formats() -> None:
         policy.preview_write(
             make_request(),
             "create_followup",
-            {"target_id": "not-a-uuid", "due_at": "2026-11-07T10:00:00Z"},
+            {"target_type": "prospect", "target_id": "not-a-uuid", "title": "Follow up", "due_at": "2026-11-07T10:00:00Z"},
         )
 
 
