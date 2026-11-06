@@ -489,5 +489,5 @@ def test_task_update_preview_accepts_allowlisted_field():
         current_user=user,
     )
     assert result.response_type is AIResponseType.ACTION_PREVIEW
-    assert result.data["task_update"]["field"] == "notes"
+    assert result.data["task_update"]["notes"] == "Waiting for client feedback."
     assert result.confirmation_required is True
