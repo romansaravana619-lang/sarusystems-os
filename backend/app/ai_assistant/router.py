@@ -280,7 +280,23 @@ def list_ai_read_tools(current_user: User = Depends(get_current_user)) -> dict[s
                 "purpose": tool.purpose,
                 "input_schema": tool.input_schema,
             })
-    return {"tools": available, "provider_connected": False}
+    write_available = []
+    for tool in registry.list(AIActionKind.WRITE):
+        if tool.name != "create_task":
+            continue
+        effective_tool = replace(
+            tool,
+            required_permission=DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission),
+        )
+        decision = policy.authorize_user(effective_tool, current_user)
+        if decision.allowed and "rules_engine.evaluate" in policy.permission_codes_from_user(current_user):
+            write_available.append({
+                "name": tool.name,
+                "purpose": tool.purpose,
+                "input_schema": tool.input_schema,
+                "requires_confirmation": tool.requires_confirmation,
+            })
+    return {"tools": available, "write_tools": write_available, "provider_connected": False}
 
 
 @router.post("/read", response_model=AIResponse)
