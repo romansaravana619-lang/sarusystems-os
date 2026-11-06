@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import math
+from threading import Lock
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -62,22 +63,30 @@ def canonical_payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def _validate_json_value(value: Any, path: str) -> None:
+def _validate_json_value(value: Any, path: str, active: set[int] | None = None) -> None:
     if value is None or isinstance(value, (str, bool, int)):
         return
     if isinstance(value, float):
         if not math.isfinite(value):
             raise ValueError(f"{path} must contain only finite JSON numbers")
         return
-    if isinstance(value, list):
-        for index, item in enumerate(value):
-            _validate_json_value(item, f"{path}[{index}]")
-        return
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError(f"{path} object keys must be strings")
-            _validate_json_value(item, f"{path}.{key}")
+    if isinstance(value, (list, dict)):
+        active_ids = active if active is not None else set()
+        value_id = id(value)
+        if value_id in active_ids:
+            raise ValueError(f"{path} contains a circular reference")
+        active_ids.add(value_id)
+        try:
+            if isinstance(value, list):
+                for index, item in enumerate(value):
+                    _validate_json_value(item, f"{path}[{index}]", active_ids)
+            else:
+                for key, item in value.items():
+                    if not isinstance(key, str):
+                        raise TypeError(f"{path} object keys must be strings")
+                    _validate_json_value(item, f"{path}.{key}", active_ids)
+        finally:
+            active_ids.remove(value_id)
         return
     raise ValueError(f"{path} contains a value that is not JSON serializable")
 
@@ -100,6 +109,7 @@ class AISafetyPolicy:
             raise ValueError("Confirmation ticket TTL must be greater than zero")
         self._previews: dict[UUID, AIWritePreview] = {}
         self._tickets: dict[UUID, AIConfirmationTicket] = {}
+        self._lock = Lock()
 
     def preview_write(
         self,
@@ -118,7 +128,8 @@ class AISafetyPolicy:
             confirmation_required=True,
             warnings=self._warnings(tool),
         )
-        self._previews[preview.preview_id] = preview
+        with self._lock:
+            self._previews[preview.preview_id] = preview
         return preview
 
     def issue_confirmation(
@@ -127,29 +138,29 @@ class AISafetyPolicy:
         *,
         now: datetime | None = None,
     ) -> AIConfirmationTicket:
-        stored_preview = self._previews.get(preview.preview_id)
-        if stored_preview is None or stored_preview != preview:
-            raise PermissionError("A confirmation can only be issued for a preview created by this policy")
         if not preview.confirmation_required:
             raise ValueError("A write preview must require confirmation")
-
         issued_at = _require_aware_datetime(now or datetime.now(timezone.utc))
-        self._previews.pop(preview.preview_id, None)
-        self._tickets = {
-            ticket_id: ticket
-            for ticket_id, ticket in self._tickets.items()
-            if ticket.expires_at > issued_at and not ticket.consumed
-        }
-        ticket = AIConfirmationTicket(
-            confirmation_id=uuid4(),
-            request_id=preview.request_id,
-            tool_name=preview.tool_name,
-            payload_hash=preview.payload_hash,
-            issued_at=issued_at,
-            expires_at=issued_at + self.ttl,
-        )
-        self._tickets[ticket.confirmation_id] = ticket
-        return ticket
+        with self._lock:
+            stored_preview = self._previews.get(preview.preview_id)
+            if stored_preview is None or stored_preview != preview:
+                raise PermissionError("A confirmation can only be issued for a preview created by this policy")
+            self._previews.pop(preview.preview_id, None)
+            self._tickets = {
+                ticket_id: ticket
+                for ticket_id, ticket in self._tickets.items()
+                if ticket.expires_at > issued_at and not ticket.consumed
+            }
+            ticket = AIConfirmationTicket(
+                confirmation_id=uuid4(),
+                request_id=preview.request_id,
+                tool_name=preview.tool_name,
+                payload_hash=preview.payload_hash,
+                issued_at=issued_at,
+                expires_at=issued_at + self.ttl,
+            )
+            self._tickets[ticket.confirmation_id] = ticket
+            return ticket
 
     def confirm_write(
         self,
@@ -164,36 +175,37 @@ class AISafetyPolicy:
         self._validate_write_tool(tool)
         self._validate_payload(tool, payload)
 
-        ticket = self._tickets.get(confirmation_id)
-        if ticket is None:
-            return AISafetyDecision(False, True, "confirmation_not_found")
-
         current_time = _require_aware_datetime(now or datetime.now(timezone.utc))
-        if current_time >= ticket.expires_at:
-            return AISafetyDecision(False, True, "confirmation_expired")
-        if ticket.consumed:
-            return AISafetyDecision(False, True, "confirmation_already_used")
-        if ticket.request_id != request.request_id or ticket.tool_name != tool_name:
-            return AISafetyDecision(False, True, "confirmation_context_mismatch")
-        if ticket.payload_hash != canonical_payload_hash(payload):
-            return AISafetyDecision(False, True, "confirmation_payload_mismatch")
+        payload_hash = canonical_payload_hash(payload)
+        with self._lock:
+            ticket = self._tickets.get(confirmation_id)
+            if ticket is None:
+                return AISafetyDecision(False, True, "confirmation_not_found")
+            if current_time >= ticket.expires_at:
+                return AISafetyDecision(False, True, "confirmation_expired")
+            if ticket.consumed:
+                return AISafetyDecision(False, True, "confirmation_already_used")
+            if ticket.request_id != request.request_id or ticket.tool_name != tool_name:
+                return AISafetyDecision(False, True, "confirmation_context_mismatch")
+            if ticket.payload_hash != payload_hash:
+                return AISafetyDecision(False, True, "confirmation_payload_mismatch")
 
-        consumed_ticket = AIConfirmationTicket(
-            confirmation_id=ticket.confirmation_id,
-            request_id=ticket.request_id,
-            tool_name=ticket.tool_name,
-            payload_hash=ticket.payload_hash,
-            issued_at=ticket.issued_at,
-            expires_at=ticket.expires_at,
-            consumed=True,
-        )
-        self._tickets[confirmation_id] = consumed_ticket
-        return AISafetyDecision(
-            True,
-            True,
-            "confirmation_validated",
-            ticket=consumed_ticket,
-        )
+            consumed_ticket = AIConfirmationTicket(
+                confirmation_id=ticket.confirmation_id,
+                request_id=ticket.request_id,
+                tool_name=ticket.tool_name,
+                payload_hash=ticket.payload_hash,
+                issued_at=ticket.issued_at,
+                expires_at=ticket.expires_at,
+                consumed=True,
+            )
+            self._tickets[confirmation_id] = consumed_ticket
+            return AISafetyDecision(
+                True,
+                True,
+                "confirmation_validated",
+                ticket=consumed_ticket,
+            )
 
     def authorize_write_execution(
         self,
