@@ -1,9 +1,12 @@
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+import math
 from uuid import uuid4
 
 import pytest
 
-from app.ai_assistant import AIRequest, get_default_ai_tool_registry
+from app.ai_assistant import AIActionKind, AIRequest, get_default_ai_tool_registry
+from app.ai_assistant.registry import AIToolDefinition
 from app.ai_assistant.safety import AISafetyPolicy, canonical_payload_hash
 
 
@@ -40,11 +43,11 @@ def test_confirmation_is_bound_to_exact_request_tool_and_payload() -> None:
     assert valid.allowed is True
     assert valid.reason == "confirmation_validated"
 
-    mismatch = policy.authorize_write_execution(
-        request, "create_task", {"title": "Changed"}, ticket.confirmation_id, now=issued_at + timedelta(seconds=2)
+    replay = policy.authorize_write_execution(
+        request, "create_task", payload, ticket.confirmation_id, now=issued_at + timedelta(seconds=2)
     )
-    assert mismatch.allowed is False
-    assert mismatch.reason == "confirmation_already_used"
+    assert replay.allowed is False
+    assert replay.reason == "confirmation_already_used"
 
 
 def test_payload_mismatch_is_rejected_before_consuming_confirmation() -> None:
@@ -65,6 +68,30 @@ def test_payload_mismatch_is_rejected_before_consuming_confirmation() -> None:
         request, "create_task", original, ticket.confirmation_id, now=issued_at + timedelta(seconds=2)
     )
     assert retry.allowed is True
+
+
+def test_confirmation_is_bound_to_request_and_tool() -> None:
+    policy = AISafetyPolicy(get_default_ai_tool_registry())
+    request = make_request()
+    preview = policy.preview_write(request, "create_task", {"title": "Follow up"})
+    ticket = policy.issue_confirmation(preview)
+
+    other_request = make_request()
+    mismatch = policy.confirm_write(
+        other_request, "create_task", {"title": "Follow up"}, ticket.confirmation_id
+    )
+    assert mismatch.allowed is False
+    assert mismatch.reason == "confirmation_context_mismatch"
+
+    task_id = str(uuid4())
+    other_tool = policy.confirm_write(
+        request,
+        "update_task",
+        {"task_id": task_id, "field": "priority", "value": "high"},
+        ticket.confirmation_id,
+    )
+    assert other_tool.allowed is False
+    assert other_tool.reason == "confirmation_context_mismatch"
 
 
 def test_expired_confirmation_is_rejected() -> None:
@@ -109,9 +136,6 @@ def test_read_tools_cannot_cross_safety_write_boundary() -> None:
 
 
 def test_write_tool_configuration_must_require_confirmation() -> None:
-    from app.ai_assistant.registry import AIToolDefinition
-    from app.ai_assistant import AIActionKind
-
     unsafe_tool = AIToolDefinition(
         name="unsafe_write",
         purpose="test",
@@ -125,3 +149,54 @@ def test_write_tool_configuration_must_require_confirmation() -> None:
 
     with pytest.raises(PermissionError, match="require explicit confirmation"):
         AISafetyPolicy(registry).preview_write(make_request(), "unsafe_write", {})
+
+
+def test_preview_must_be_issued_by_the_same_policy_and_only_once() -> None:
+    policy = AISafetyPolicy(get_default_ai_tool_registry())
+    preview = policy.preview_write(make_request(), "create_task", {"title": "Follow up"})
+
+    with pytest.raises(PermissionError, match="created by this policy"):
+        policy.issue_confirmation(replace(preview, summary="tampered"))
+
+    policy.issue_confirmation(preview)
+    with pytest.raises(PermissionError, match="created by this policy"):
+        policy.issue_confirmation(preview)
+
+
+def test_payload_schema_validates_types_and_uuid_formats() -> None:
+    policy = AISafetyPolicy(get_default_ai_tool_registry())
+
+    with pytest.raises(ValueError, match="schema type string"):
+        policy.preview_write(make_request(), "create_task", {"title": 123})
+
+    with pytest.raises(ValueError, match="valid UUID"):
+        policy.preview_write(
+            make_request(),
+            "create_followup",
+            {"target_id": "not-a-uuid", "due_at": "2026-11-07T10:00:00Z"},
+        )
+
+
+def test_confirmation_ttl_and_timestamps_must_be_valid() -> None:
+    registry = get_default_ai_tool_registry()
+    with pytest.raises(ValueError, match="TTL"):
+        AISafetyPolicy(registry, ttl=timedelta(0))
+
+    policy = AISafetyPolicy(registry)
+    preview = policy.preview_write(make_request(), "create_task", {"title": "Follow up"})
+    with pytest.raises(ValueError, match="timezone-aware"):
+        policy.issue_confirmation(preview, now=datetime(2026, 10, 28, 10, 0))
+
+
+def test_payload_hash_rejects_non_json_and_non_finite_values() -> None:
+    with pytest.raises(ValueError, match="not JSON serializable"):
+        canonical_payload_hash({"value": object()})
+
+    with pytest.raises(ValueError, match="finite JSON numbers"):
+        canonical_payload_hash({"value": math.nan})
+
+
+def test_payload_hash_is_independent_of_object_key_order() -> None:
+    assert canonical_payload_hash({"title": "Follow up", "priority": "high"}) == canonical_payload_hash(
+        {"priority": "high", "title": "Follow up"}
+    )
