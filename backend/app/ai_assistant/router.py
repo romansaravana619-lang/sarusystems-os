@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
+from app.ai_assistant.provider import AIProviderUnavailable, generate_assistant_action, provider_is_configured
 from app.analytics.router import dashboard as analytics_dashboard
 from app.calendar.router import create_event_record, list_events
 from app.calendar.schemas import CalendarEventCreate, CalendarEventResponse
@@ -302,7 +303,7 @@ def list_ai_read_tools(current_user: User = Depends(get_current_user)) -> dict[s
                 "input_schema": tool.input_schema,
                 "requires_confirmation": tool.requires_confirmation,
             })
-    return {"tools": available, "write_tools": write_available, "provider_connected": False}
+    return {"tools": available, "write_tools": write_available, "provider_connected": provider_is_configured()}
 
 
 @router.post("/read", response_model=AIResponse)
@@ -824,3 +825,56 @@ def confirm_ai_write(
         records=[record],
         audit_reference=executor.last_audit_reference,
     )
+
+
+class AIChatInvocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/chat")
+def chat_with_founder_assistant(
+    invocation: AIChatInvocation,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Route natural-language requests to registered read tools or safe write previews."""
+    available = list_ai_read_tools(current_user=current_user)
+    tools = available["tools"] + available["write_tools"]
+    try:
+        action = generate_assistant_action(invocation.message, tools)
+    except AIProviderUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Founder AI Assistant provider is not configured or temporarily unavailable.",
+        ) from exc
+
+    tool_name = action["tool_name"]
+    if tool_name == "clarify":
+        return {"response_type": "clarification", "summary": action.get("summary", "Please clarify your request.")}
+
+    registered = get_default_ai_tool_registry().get(tool_name)
+    if registered is None or tool_name not in {item["name"] for item in tools}:
+        raise HTTPException(status_code=422, detail="The AI provider selected an unavailable capability.")
+
+    if registered.action_kind == AIActionKind.READ:
+        result = execute_ai_read(
+            AIReadInvocation(
+                message=invocation.message,
+                tool_name=tool_name,
+                input=action.get("input", {}),
+            ),
+            current_user=current_user,
+            db=db,
+        )
+        return result.model_dump(mode="json")
+
+    preview = preview_ai_write(
+        AIWriteInvocation(
+            message=invocation.message,
+            tool_name=tool_name,
+            input=action.get("input", {}),
+        ),
+        current_user=current_user,
+    )
+    return preview.model_dump(mode="json")
