@@ -115,3 +115,21 @@ def test_oversized_audit_metadata_is_rejected_before_persist() -> None:
 
     assert session.items == []
     assert session.flush_count == 0
+
+
+
+def test_sensitive_nested_metadata_and_inline_secrets_are_redacted() -> None:
+    event = make_event(
+        user_request="Create task; api_key=top-secret-value",
+        action_metadata={
+            "title": "Prepare proposal",
+            "nested": {"refresh_token": "hidden-token", "safe": "password=hunter2"},
+        },
+    )
+
+    payload = json.loads(event.to_details())
+
+    assert "top-secret-value" not in json.dumps(payload)
+    assert "hidden-token" not in json.dumps(payload)
+    assert "hunter2" not in json.dumps(payload)
+    assert payload["action_metadata"]["nested"] == {"safe": "password=[REDACTED]"}
