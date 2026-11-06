@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user, require_permission
 from app.analytics.router import dashboard as analytics_dashboard
 from app.calendar.router import create_event_record, list_events
-from app.calendar.schemas import CalendarEventCreate
+from app.calendar.schemas import CalendarEventCreate, CalendarEventResponse
 from app.clients.router import get_workspace as get_client_workspace
 from app.command_center.router import get_command_center
 from app.communication.router import list_activities
@@ -704,7 +704,7 @@ def confirm_ai_write(
                 )
                 data_key = "task"
                 response_data = TaskResponse.model_validate(record).model_dump(mode="json")
-            else:
+            elif tool.name == "create_followup":
                 record = create_follow_up_record(
                     FollowUpCreate.model_validate(payload),
                     current_user,
@@ -713,6 +713,15 @@ def confirm_ai_write(
                 )
                 data_key = "followup"
                 response_data = FollowUpResponse.model_validate(record).model_dump(mode="json")
+            else:
+                record = create_event_record(
+                    CalendarEventCreate.model_validate(payload),
+                    current_user,
+                    db,
+                    commit=False,
+                )
+                data_key = "calendar_event"
+                response_data = CalendarEventResponse.model_validate(record).model_dump(mode="json")
             return {
                 "record_id": str(record.id),
                 "resulting_record_ids": [str(record.id)],
@@ -752,7 +761,7 @@ def confirm_ai_write(
 
     with PENDING_WRITE_LOCK:
         PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
-    data_key = "task" if tool.name == "create_task" else "followup"
+    data_key = "task" if tool.name == "create_task" else "followup" if tool.name == "create_followup" else "calendar_event"
     created_data = result[data_key]
     record = AIRecordReference(
         entity_type=data_key,
@@ -763,7 +772,7 @@ def confirm_ai_write(
         request_id=request.request_id,
         intent=tool.name,
         response_type=AIResponseType.ACTION_RESULT,
-        summary="The task was created successfully." if data_key == "task" else "The CRM follow-up was created successfully.",
+        summary={"task": "The task was created successfully.", "followup": "The CRM follow-up was created successfully.", "calendar_event": "The calendar event was created successfully."}[data_key],
         data={data_key: created_data},
         records=[record],
         audit_reference=executor.last_audit_reference,
