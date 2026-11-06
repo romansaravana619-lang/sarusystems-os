@@ -14,8 +14,10 @@ from uuid import UUID, uuid4
 
 from app.shared.models import AuditLog
 
-_SENSITIVE_KEY_PARTS = ("password", "secret", "token", "apikey", "credential", "authorization", "privatekey")
-_SENSITIVE_TEXT = re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)\\s*[:=]\\s*([^\\s,;]+)")
+_SENSITIVE_KEY_PARTS = (
+    "password", "secret", "token", "apikey", "credential", "authorization", "privatekey"
+)
+_SENSITIVE_TEXT = re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)\s*[:=]\s*([^\s,;]+)")
 
 
 def _safe_metadata(value: Any) -> Any:
@@ -31,7 +33,7 @@ def _safe_metadata(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_safe_metadata(item) for item in value]
     if isinstance(value, str):
-        return _SENSITIVE_TEXT.sub(r"\\1=[REDACTED]", value)
+        return _SENSITIVE_TEXT.sub(r"\1=[REDACTED]", value)
     return value
 
 
