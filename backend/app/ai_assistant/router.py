@@ -12,7 +12,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
+from app.analytics.router import dashboard as analytics_dashboard
+from app.calendar.router import list_events
+from app.command_center.router import get_command_center
+from app.communication.router import list_activities
+from app.crm.router import crm_pipeline, list_follow_ups, list_opportunities
+from app.finance.router import dashboard as finance_dashboard, list_milestones
+from app.freelancers.router import workspace as freelancer_workspace
+from app.notifications.router import list_notifications
+from app.projects.router import list_projects
+from app.sales.router import pipeline as sales_pipeline
 from app.core.database import get_db
 from app.global_search.router import search as global_search
 from app.shared.models import User
@@ -28,7 +38,13 @@ from .registry import get_default_ai_tool_registry
 
 router = APIRouter(prefix="/ai-assistant", tags=["AI Assistant"])
 
-READ_HANDLERS = frozenset({"get_tasks", "global_search"})
+READ_HANDLERS = frozenset({
+    "get_today_attention", "get_tasks", "get_followups", "get_sales_pipeline",
+    "get_prospect_followups", "get_opportunities", "get_projects",
+    "get_unpaid_payments", "get_financial_summary", "get_freelancer_workload",
+    "get_calendar_events", "get_notifications", "get_communication_history",
+    "get_analytics_summary", "global_search",
+})
 
 
 class AIReadInvocation(BaseModel):
@@ -81,6 +97,11 @@ def _validate_read_input(tool_name: str, payload: dict[str, Any]) -> None:
 
 
 def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, db: Session):
+    registry = get_default_ai_tool_registry()
+    tool = registry.require(tool_name)
+    if tool.required_permission:
+        require_permission(tool.required_permission)(current_user)
+
     if tool_name == "global_search":
         result = global_search(
             q=payload["query"].strip(),
@@ -103,6 +124,33 @@ def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, d
                 boundary = boundary.replace(tzinfo=timezone.utc)
             tasks = [task for task in tasks if task.due_at is not None and task.due_at <= boundary]
         return [_serialize_task(task) for task in tasks]
+    if tool_name == "get_today_attention":
+        return get_command_center(current_user=current_user, db=db).model_dump(mode="json")
+    if tool_name == "get_followups":
+        return [item.model_dump(mode="json") for item in list_follow_ups(current_user=current_user, db=db)]
+    if tool_name == "get_sales_pipeline":
+        return [item.model_dump(mode="json") for item in sales_pipeline(current_user=current_user, db=db)]
+    if tool_name == "get_prospect_followups":
+        return crm_pipeline(current_user=current_user, db=db)["prospects"]
+    if tool_name == "get_opportunities":
+        return [item.model_dump(mode="json") for item in list_opportunities(current_user=current_user, db=db)]
+    if tool_name == "get_projects":
+        return [item.model_dump(mode="json") for item in list_projects(current_user=current_user, db=db)]
+    if tool_name == "get_unpaid_payments":
+        milestones = list_milestones(status_filter="unpaid", current_user=current_user, db=db)
+        return [item.model_dump(mode="json") for item in milestones]
+    if tool_name == "get_financial_summary":
+        return finance_dashboard(current_user=current_user, db=db).model_dump(mode="json")
+    if tool_name == "get_freelancer_workload":
+        return freelancer_workspace(current_user=current_user, db=db).model_dump(mode="json")
+    if tool_name == "get_calendar_events":
+        return [item.model_dump(mode="json") for item in list_events(current_user=current_user, db=db, limit=100)]
+    if tool_name == "get_notifications":
+        return [item.model_dump(mode="json") for item in list_notifications(current_user=current_user, db=db, unread_only=True, limit=100)]
+    if tool_name == "get_communication_history":
+        return [item.model_dump(mode="json") for item in list_activities(current_user=current_user, db=db, limit=50)]
+    if tool_name == "get_analytics_summary":
+        return analytics_dashboard(current_user=current_user, db=db)
     raise HTTPException(status_code=501, detail="This registered AI read capability is not connected to an OS API yet.")
 
 
@@ -157,7 +205,8 @@ def execute_ai_read(
     )
 
     records = []
-    for item in result:
+    items = [result] if isinstance(result, dict) else list(result)
+    for item in items:
         if not isinstance(item, dict) or not item.get("id") or not item.get("type"):
             continue
         try:
@@ -183,13 +232,13 @@ def execute_ai_read(
         ),
     )
     db.commit()
-    summary = f"Found {len(result)} result{'s' if len(result) != 1 else ''}."
+    summary = f"Found {len(items)} result(s)."
     return AIResponse(
         request_id=request.request_id,
         intent=tool.name,
         response_type=AIResponseType.ANSWER,
         summary=summary,
-        data={"items": result},
+        data={"items": items},
         records=records,
         audit_reference=audit_reference,
     )
