@@ -47,7 +47,7 @@ from .safety import AISafetyPolicy, AIWritePreview, canonical_payload_hash
 router = APIRouter(prefix="/ai-assistant", tags=["AI Assistant"])
 WRITE_REGISTRY = get_default_ai_tool_registry()
 WRITE_SAFETY_POLICY = AISafetyPolicy(WRITE_REGISTRY)
-PENDING_WRITE_PREVIEWS: dict[UUID, tuple[AIRequest, AIWritePreview, UUID, UUID]] = {}
+PENDING_WRITE_PREVIEWS: dict[UUID, tuple[AIRequest, AIWritePreview, UUID, UUID, datetime]] = {}
 PENDING_WRITE_LOCK = Lock()
 
 DOMAIN_PERMISSIONS = {
@@ -441,7 +441,23 @@ def preview_ai_write(
         raise HTTPException(status_code=422, detail="The task details are invalid. Review the required fields and try again.") from exc
 
     with PENDING_WRITE_LOCK:
-        PENDING_WRITE_PREVIEWS[preview.preview_id] = (request, preview, current_user.id, current_user.company_id)
+        now = datetime.now(timezone.utc)
+        expired = [
+            preview_id
+            for preview_id, pending in PENDING_WRITE_PREVIEWS.items()
+            if now - pending[4] >= WRITE_SAFETY_POLICY.ttl
+        ]
+        for preview_id in expired:
+            PENDING_WRITE_PREVIEWS.pop(preview_id, None)
+        while len(PENDING_WRITE_PREVIEWS) >= 500:
+            PENDING_WRITE_PREVIEWS.pop(next(iter(PENDING_WRITE_PREVIEWS)))
+        PENDING_WRITE_PREVIEWS[preview.preview_id] = (
+            request,
+            preview,
+            current_user.id,
+            current_user.company_id,
+            now,
+        )
 
     return AIResponse(
         request_id=request.request_id,
@@ -474,7 +490,11 @@ def confirm_ai_write(
     if pending is None:
         raise HTTPException(status_code=409, detail="This preview is no longer available. Prepare a new preview.")
 
-    request, preview, preview_user_id, preview_company_id = pending
+    request, preview, preview_user_id, preview_company_id, preview_created_at = pending
+    if datetime.now(timezone.utc) - preview_created_at >= WRITE_SAFETY_POLICY.ttl:
+        with PENDING_WRITE_LOCK:
+            PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
+        raise HTTPException(status_code=409, detail="This preview has expired. Prepare a new preview.")
     if preview_user_id != current_user.id or preview_company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="This preview belongs to a different authenticated user.")
     if (
