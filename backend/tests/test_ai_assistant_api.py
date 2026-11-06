@@ -308,3 +308,28 @@ def test_confirmed_task_write_rejects_payload_tampering():
         )
 
     assert exc.value.status_code == 409
+
+
+def test_write_preview_cannot_be_confirmed_by_another_user():
+    creator = user_with_permissions("tasks.create")
+    other_user = user_with_permissions("tasks.create")
+    invocation = AIWriteInvocation(
+        message="Create a task",
+        tool_name="create_task",
+        input={"title": "Prepare proposal"},
+    )
+    preview = preview_ai_write(invocation, current_user=creator)
+
+    with pytest.raises(HTTPException) as exc:
+        confirm_ai_write(
+            AIWriteConfirmation(
+                message=invocation.message,
+                tool_name=invocation.tool_name,
+                input=invocation.input,
+                preview_id=preview.data["preview_id"],
+            ),
+            current_user=other_user,
+            db=FakeDB(),
+        )
+
+    assert exc.value.status_code == 403
