@@ -9,7 +9,12 @@ from .contracts import AIActionKind, AIRequest, AIResponse, AIResponseType
 from .rbac import AIAuthorizationDecision
 from .read_write import AIReadWritePolicy
 from .registry import AIToolDefinition, AIToolRegistry
-from .safety import AIConfirmationTicket, AISafetyPolicy, AIWritePreview
+from .safety import (
+    AIConfirmationTicket,
+    AISafetyPolicy,
+    AIWritePreview,
+    canonical_payload_hash,
+)
 
 
 class AuditedActionExecutor(Protocol):
@@ -123,7 +128,7 @@ class AIOrchestrator:
             or audit_event.permission_decision != "allowed"
             or audit_event.business_rule_decision != "allowed"
             or audit_event.confirmation_state not in {"confirmed", "confirmation_validated"}
-            or audit_event.action_payload_hash != self.safety_policy_hash(payload)
+            or audit_event.action_payload_hash != canonical_payload_hash(payload)
         ):
             raise PermissionError("The audit context does not match the approved action decisions")
 
@@ -143,12 +148,6 @@ class AIOrchestrator:
             context=request.context,
             payload=payload,
         )
-
-    @staticmethod
-    def safety_policy_hash(payload: dict[str, Any]) -> str:
-        from .safety import canonical_payload_hash
-
-        return canonical_payload_hash(payload)
 
     def execute_read(
         self,
