@@ -357,3 +357,87 @@ def execute_ai_read(
         records=records,
         audit_reference=audit_reference,
     )
+
+
+class AIWriteInvocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=4000)
+    tool_name: str = Field(min_length=1, max_length=100)
+    input: dict[str, Any] = Field(default_factory=dict)
+
+
+class AIWriteConfirmation(AIWriteInvocation):
+    preview_id: UUID
+
+
+class _ExistingRulesEngineEvaluator:
+    def __init__(self, current_user: User, db: Session) -> None:
+        self.current_user = current_user
+        self.db = db
+
+    def evaluate(self, request: AIBusinessRuleRequest):
+        require_permission("rules_engine.evaluate")(self.current_user)
+        return evaluate_rules(
+            RuleEvaluateRequest(
+                trigger_event=request.trigger_event,
+                applies_to=request.applies_to,
+                action=request.action,
+                context=request.context,
+                user_id=request.user_id,
+                role_names=list(request.role_names),
+            ),
+            current_user=self.current_user,
+            db=self.db,
+        )
+
+
+@router.post("/write/preview", response_model=AIResponse)
+def preview_ai_write(
+    invocation: AIWriteInvocation,
+    current_user: User = Depends(get_current_user),
+) -> AIResponse:
+    tool = WRITE_REGISTRY.get(invocation.tool_name)
+    if tool is None or tool.action_kind != AIActionKind.WRITE:
+        raise HTTPException(status_code=404, detail="Registered write capability not found.")
+    if tool.name != "create_task":
+        raise HTTPException(status_code=501, detail="This write capability is not enabled for execution yet.")
+
+    effective_tool = replace(
+        tool,
+        required_permission=DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission),
+    )
+    decision = AIToolRBACPolicy().authorize_user(effective_tool, current_user)
+    if not decision.allowed:
+        return AIResponse(
+            request_id=UUID(int=0),
+            intent=tool.name,
+            response_type=AIResponseType.BLOCKED,
+            summary="You do not have permission to create this record.",
+            error_code="permission_denied",
+        )
+
+    try:
+        AIReadWritePolicy(WRITE_REGISTRY).validate_request(tool, invocation.input)
+        task_payload = TaskCreate.model_validate(invocation.input)
+        request = AIRequest(message=invocation.message, context=invocation.input)
+        preview = WRITE_SAFETY_POLICY.preview_write(request, tool.name, invocation.input)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="The task details are invalid. Review the required fields and try again.") from exc
+
+    with PENDING_WRITE_LOCK:
+        PENDING_WRITE_PREVIEWS[preview.preview_id] = (request, preview)
+
+    return AIResponse(
+        request_id=request.request_id,
+        intent=tool.name,
+        response_type=AIResponseType.ACTION_PREVIEW,
+        summary=preview.summary,
+        data={
+            "preview_id": str(preview.preview_id),
+            "action": "Create task",
+            "task": task_payload.model_dump(mode="json"),
+        },
+        actions_available=["confirm_create_task"],
+        confirmation_required=True,
+        warnings=list(preview.warnings),
+    )
