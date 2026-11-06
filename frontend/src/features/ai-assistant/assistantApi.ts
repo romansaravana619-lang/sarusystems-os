@@ -11,7 +11,7 @@ export type AIAssistantResponse = {
   intent: string | null;
   response_type: "answer" | "clarification" | "action_preview" | "action_result" | "blocked" | "error";
   summary: string;
-  data: { items?: Array<Record<string, unknown>>; task?: Record<string, unknown>; preview_id?: string; action?: string };
+  data: { items?: Array<Record<string, unknown>>; task?: Record<string, unknown>; followup?: Record<string, unknown>; calendar_event?: Record<string, unknown>; payload?: Record<string, unknown>; preview_id?: string; action?: string };
   records: Array<{ entity_type: string; entity_id: string; label: string | null }>;
   recommendations: string[];
   actions_available: string[];
