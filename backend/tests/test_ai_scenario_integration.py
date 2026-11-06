@@ -421,8 +421,9 @@ def test_domain_api_failure_is_audited_and_does_not_claim_action_success():
     assert session.items == []
     assert len(failure_session.items) == 1
     failure_details = failure_session.items[0].details
-    assert '"execution_result": "failed"' in failure_details
-    assert '"failure_error": "TimeoutError"' in failure_details
+    failure_audit = json.loads(failure_details)
+    assert failure_audit["execution_result"] == "failed"
+    assert failure_audit["failure_error"] == "TimeoutError"
     assert "credentials" not in failure_details
 
     response = AIFailureHandler.os_api_failure(
