@@ -154,7 +154,9 @@ def test_orchestrator_records_sanitized_failure_and_reraises() -> None:
             "create_task",
             payload,
             safety_decision=confirmed_decision(registry, request, payload),
-            audit_event=build_context(request),
+            authorization_decision=authorization,
+            business_rule_decision=business_rules,
+            audit_event=event,
             handler=handler,
         )
 
@@ -186,7 +188,9 @@ def test_write_is_not_executed_without_valid_consumed_confirmation() -> None:
             "create_task",
             payload,
             safety_decision=confirmed_decision(registry, request, {"title": "Different payload"}),
-            audit_event=build_context(request),
+            authorization_decision=authorization,
+            business_rule_decision=business_rules,
+            audit_event=event,
             handler=handler,
         )
 
@@ -230,7 +234,8 @@ def test_read_only_event_cannot_be_used_for_write_execution() -> None:
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
     orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
-    read_event = build_context(request)
+    read_event = build_context(request, payload)
+    authorization, business_rules = approval_context(read_event)
     with pytest.raises(PermissionError, match="audit context"):
         orchestrator.execute_write(
             request,
