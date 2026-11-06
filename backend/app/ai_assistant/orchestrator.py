@@ -98,6 +98,7 @@ class AIOrchestrator:
             or audit_event.permission_decision != "allowed"
             or audit_event.business_rule_decision != "allowed"
             or audit_event.confirmation_state not in {"confirmed", "confirmation_validated"}
+            or audit_event.action_payload_hash != canonical_payload_hash(payload)
         ):
             raise PermissionError("The audit context does not match the approved action decisions")
 
