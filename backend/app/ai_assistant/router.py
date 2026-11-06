@@ -444,6 +444,8 @@ def preview_ai_write(
 
     try:
         AIReadWritePolicy(WRITE_REGISTRY).validate_request(tool, invocation.input)
+        if tool.name == "update_task" and invocation.input.get("field") not in {"title", "description", "expected_output", "status", "priority", "owner_user_id", "start_at", "due_at", "estimated_hours", "founder_notes", "notes"}:
+            raise ValueError("Unsupported task update field")
         if tool.name == "create_task":
             preview_payload = TaskCreate.model_validate(invocation.input).model_dump(mode="json")
             action_label = "Create task"
@@ -538,7 +540,10 @@ def preview_ai_write(
             **(
                 {"task": preview_payload} if tool.name == "create_task"
                 else {"followup": preview_payload} if tool.name == "create_followup"
-                else {"calendar_event": preview_payload}
+                else {"calendar_event": preview_payload} if tool.name in {"schedule_followup", "create_founder_reminder"}
+                else {"activity": preview_payload} if tool.name == "record_activity"
+                else {"notification": preview_payload} if tool.name == "create_notification"
+                else {"task_update": preview_payload}
             ),
         },
         actions_available=[f"confirm_{tool.name}"],
@@ -569,6 +574,8 @@ def confirm_ai_write(
         raise HTTPException(status_code=409, detail="This preview has expired. Prepare a new preview.")
     if preview_user_id != current_user.id or preview_company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="This preview belongs to a different authenticated user.")
+    if confirmation.tool_name == "update_task" and confirmation.input.get("field") not in {"title", "description", "expected_output", "status", "priority", "owner_user_id", "start_at", "due_at", "estimated_hours", "founder_notes", "notes"}:
+        raise HTTPException(status_code=422, detail="This task field cannot be updated through the assistant.")
     if (
         confirmation.message != request.message
         or confirmation.tool_name != preview.tool_name
