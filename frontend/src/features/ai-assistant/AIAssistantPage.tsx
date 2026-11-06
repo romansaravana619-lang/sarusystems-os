@@ -60,42 +60,6 @@ export default function AIAssistantPage({ token }: Props) {
       })
       .catch((err: Error) => { if (active) setError(err.message); })
       .finally(() => { if (active) setToolsLoading(false); });
-    async function previewOtherWrite(toolName: string, message: string, input: Record<string, unknown>) {
-    setOtherWriteLoading(true);
-    setError("");
-    setOtherWritePreview(null);
-    const invocation = { message, tool_name: toolName, input };
-    try {
-      const result = await previewAIAssistantWrite(token, invocation);
-      setOtherWriteInvocation(invocation);
-      setOtherWritePreview(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "The action preview failed.");
-    } finally {
-      setOtherWriteLoading(false);
-    }
-  }
-
-  async function confirmOtherWrite() {
-    const previewId = otherWritePreview?.data.preview_id;
-    if (!previewId || !otherWriteInvocation) return;
-    setOtherWriteLoading(true);
-    setError("");
-    try {
-      const result = await confirmAIAssistantWrite(token, { ...otherWriteInvocation, preview_id: previewId });
-      setOtherWritePreview(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "The action could not be confirmed.");
-    } finally {
-      setOtherWriteLoading(false);
-    }
-  }
-
-  function toIso(value: string): string {
-    const parsed = new Date(value);
-    if (!value || Number.isNaN(parsed.getTime())) throw new Error("Enter a valid date and time.");
-    return parsed.toISOString();
-  }
   return () => { active = false; };
   }, [token]);
 
@@ -186,6 +150,42 @@ export default function AIAssistantPage({ token }: Props) {
     }
   }
 
+  async function previewOtherWrite(toolName: string, message: string, input: Record<string, unknown>) {
+    setOtherWriteLoading(true);
+    setError("");
+    setOtherWritePreview(null);
+    const invocation = { message, tool_name: toolName, input };
+    try {
+      const result = await previewAIAssistantWrite(token, invocation);
+      setOtherWriteInvocation(invocation);
+      setOtherWritePreview(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The action preview failed.");
+    } finally {
+      setOtherWriteLoading(false);
+    }
+  }
+
+  async function confirmOtherWrite() {
+    const previewId = otherWritePreview?.data.preview_id;
+    if (!previewId || !otherWriteInvocation) return;
+    setOtherWriteLoading(true);
+    setError("");
+    try {
+      const result = await confirmAIAssistantWrite(token, { ...otherWriteInvocation, preview_id: previewId });
+      setOtherWritePreview(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The action could not be confirmed.");
+    } finally {
+      setOtherWriteLoading(false);
+    }
+  }
+
+  function toIso(value: string): string {
+    const parsed = new Date(value);
+    if (!value || Number.isNaN(parsed.getTime())) throw new Error("Enter a valid date and time.");
+    return parsed.toISOString();
+  }
   return (
     <section className="ai-assistant-page">
       <header className="ai-assistant-hero">
