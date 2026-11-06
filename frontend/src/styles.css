@@ -162,3 +162,10 @@ tr:last-child td { border-bottom: 0; }
   .ai-assistant-main { order: 1; }
   .ai-composer-row { flex-direction: column; }
 }
+
+
+.ai-write-panel { margin-top: 18px; border-color: #66552f; background: linear-gradient(145deg, #1b1a15, #121914); }
+.ai-write-panel .ai-result-heading > span { color: #e4c98a; }
+.ai-write-confirmation { display: grid; gap: 10px; padding: 16px; border: 1px solid #62502c; border-radius: 12px; background: #201e17; }
+.ai-write-confirmation > p { margin: 0; color: #e7dfc9; font-size: 13px; }
+.ai-write-confirmation .primary-button { justify-self: start; border: 0; background: #e5c985; color: #211a0c; }
