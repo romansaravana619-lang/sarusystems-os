@@ -533,16 +533,37 @@ def confirm_ai_write(
         )
 
     try:
-        task_payload = TaskCreate.model_validate(confirmation.input)
+        if tool.name == "create_task":
+            action_payload = TaskCreate.model_validate(confirmation.input).model_dump(mode="json")
+            target_entity_type = "task"
+            target_entity_id = None
+            rule_trigger = "task.create"
+            rule_applies_to = "task"
+            action_name = "create_task"
+        else:
+            target_field = "prospect_id" if confirmation.input["target_type"] == "prospect" else "contact_id"
+            followup_input = {
+                target_field: UUID(confirmation.input["target_id"]),
+                "owner_user_id": current_user.id,
+                "title": confirmation.input["title"],
+                "due_at": confirmation.input["due_at"],
+                "notes": confirmation.input.get("notes"),
+            }
+            action_payload = FollowUpCreate.model_validate(followup_input).model_dump(mode="json")
+            target_entity_type = "followup"
+            target_entity_id = UUID(confirmation.input["target_id"])
+            rule_trigger = "crm.followup.create"
+            rule_applies_to = "crm_followup"
+            action_name = "create_followup"
         role_names = tuple(
             role.name for role in current_user.roles
             if getattr(role, "is_active", True)
         )
         rule_request = AIBusinessRuleRequest(
-            trigger_event="task.create",
-            applies_to="task",
-            action="create_task",
-            context=task_payload.model_dump(mode="json"),
+            trigger_event=rule_trigger,
+            applies_to=rule_applies_to,
+            action=action_name,
+            context=action_payload,
             user_id=current_user.id,
             role_names=role_names,
         )
@@ -556,7 +577,7 @@ def confirm_ai_write(
             request_id=request.request_id,
             intent=tool.name,
             response_type=AIResponseType.BLOCKED,
-            summary="The task cannot be created because the required authorization or business-rule check is unavailable.",
+            summary="The requested record cannot be created because the required authorization or business-rule check is unavailable.",
             error_code="business_rule_check_unavailable",
         )
     except (ValueError, TypeError):
@@ -571,8 +592,9 @@ def confirm_ai_write(
             user_request=request.message,
             normalized_intent=tool.use_case_key or tool.name,
             tool_name=tool.name,
-            target_entity_type="task",
-            action_metadata={"task": task_payload.model_dump(mode="json")},
+            target_entity_type=target_entity_type,
+            target_entity_id=target_entity_id,
+            action_metadata={"payload": action_payload},
             action_payload_hash=preview.payload_hash,
             permission_decision="allowed",
             business_rule_decision=business_decision.reason_code,
@@ -588,7 +610,7 @@ def confirm_ai_write(
             request_id=request.request_id,
             intent=tool.name,
             response_type=AIResponseType.BLOCKED,
-            summary="The task creation was blocked by an active Saru Systems business rule.",
+            summary="The requested action was blocked by an active Saru Systems business rule.",
             error_code="business_rule_blocked",
             warnings=list(business_decision.warnings),
             audit_reference=audit_reference,
@@ -621,17 +643,29 @@ def confirm_ai_write(
             safety_policy=WRITE_SAFETY_POLICY,
         )
 
-        def create_task_handler(request: AIRequest, context: dict[str, Any], payload: dict[str, Any]):
-            task = create_task_record(
-                TaskCreate.model_validate(payload),
-                current_user,
-                db,
-                commit=False,
-            )
+        def create_record_handler(request: AIRequest, context: dict[str, Any], payload: dict[str, Any]):
+            if tool.name == "create_task":
+                record = create_task_record(
+                    TaskCreate.model_validate(payload),
+                    current_user,
+                    db,
+                    commit=False,
+                )
+                data_key = "task"
+                response_data = TaskResponse.model_validate(record).model_dump(mode="json")
+            else:
+                record = create_follow_up_record(
+                    FollowUpCreate.model_validate(payload),
+                    current_user,
+                    db,
+                    commit=False,
+                )
+                data_key = "followup"
+                response_data = FollowUpResponse.model_validate(record).model_dump(mode="json")
             return {
-                "record_id": str(task.id),
-                "resulting_record_ids": [str(task.id)],
-                "task": TaskResponse.model_validate(task).model_dump(mode="json"),
+                "record_id": str(record.id),
+                "resulting_record_ids": [str(record.id)],
+                data_key: response_data,
             }
 
         result = orchestrator.execute_write(
@@ -642,7 +676,7 @@ def confirm_ai_write(
             authorization_decision=authorization,
             business_rule_decision=business_decision,
             audit_event=audit_event,
-            handler=create_task_handler,
+            handler=create_record_handler,
         )
         db.commit()
     except Exception as exc:  # noqa: BLE001 - return a safe failure without leaking internal details
@@ -654,31 +688,32 @@ def confirm_ai_write(
                 request_id=request.request_id,
                 intent=tool.name,
                 response_type=AIResponseType.BLOCKED,
-                summary="The task was not created because its confirmation or execution authorization was rejected.",
+                summary="The action was not executed because its confirmation or execution authorization was rejected.",
                 error_code="write_confirmation_rejected",
             )
         return AIResponse(
             request_id=request.request_id,
             intent=tool.name,
             response_type=AIResponseType.ERROR,
-            summary="The task could not be created. No success is being reported.",
-            error_code="task_creation_failed",
+            summary="The requested record could not be created. No success is being reported.",
+            error_code="write_execution_failed",
         )
 
     with PENDING_WRITE_LOCK:
         PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
-    task_data = result["task"]
+    data_key = "task" if tool.name == "create_task" else "followup"
+    created_data = result[data_key]
     record = AIRecordReference(
-        entity_type="task",
+        entity_type=data_key,
         entity_id=UUID(result["record_id"]),
-        label=task_data["title"],
+        label=created_data["title"],
     )
     return AIResponse(
         request_id=request.request_id,
         intent=tool.name,
         response_type=AIResponseType.ACTION_RESULT,
-        summary="The task was created successfully.",
-        data={"task": task_data},
+        summary="The task was created successfully." if data_key == "task" else "The CRM follow-up was created successfully.",
+        data={data_key: created_data},
         records=[record],
         audit_reference=executor.last_audit_reference,
     )
