@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.ai_assistant.audit import AIAuditEvent
 from app.ai_assistant.business_rules import (
     AIBusinessRuleRequest,
     AIBusinessRulesPolicy,
@@ -16,7 +17,7 @@ from app.ai_assistant.failure import AIFailureHandler
 from app.ai_assistant.global_search import AISearchContext, resolve_ai_entity
 from app.ai_assistant.orchestrator import AIOrchestrator
 from app.ai_assistant.rbac import AIToolRBACPolicy
-from app.ai_assistant.registry import AIToolDefinition, AIToolRegistry
+from app.ai_assistant.registry import AIToolDefinition, AIToolRegistry, get_default_ai_tool_registry
 from app.ai_assistant.safety import canonical_payload_hash
 
 
@@ -118,9 +119,7 @@ def build_rule_request(user_id):
 
 
 def build_audit_event(request, user, payload, *, permission_decision, rule_decision):
-    return __import__(
-        "app.ai_assistant.audit", fromlist=["AIAuditEvent"]
-    ).AIAuditEvent(
+    return AIAuditEvent(
         user_id=user.id,
         company_id=user.company_id,
         request_id=request.request_id,
@@ -155,15 +154,13 @@ def build_write_context(orchestrator, request, payload, user, *, rules_allowed=T
 
 
 def test_read_scenario_executes_only_registered_read_tool():
-    registry = build_registry()
     calls = []
 
     def read_handler(*, request, context):
         calls.append((request, context))
         return {"items": [{"id": "task-1", "status": context["status"]}]}
 
-    registry.require("get_tasks").handler = read_handler if False else None
-    # The frozen tool definition is replaced at registry construction time.
+    # The registered handler is supplied when the immutable tool definition is created.
     registry = AIToolRegistry(
         (
             AIToolDefinition(
@@ -189,9 +186,7 @@ def test_read_scenario_executes_only_registered_read_tool():
 def test_global_search_scenario_preserves_authenticated_company_and_user_scope():
     company_id = uuid4()
     user = build_user(company_id, "global_search.view")
-    tool = __import__(
-        "app.ai_assistant.registry", fromlist=["get_default_ai_tool_registry"]
-    ).get_default_ai_tool_registry().require("global_search")
+    tool = get_default_ai_tool_registry().require("global_search")
     decision = AIToolRBACPolicy().authorize_user(tool, user)
     assert decision.allowed is True
 
