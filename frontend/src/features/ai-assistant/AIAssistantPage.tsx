@@ -36,9 +36,10 @@ export default function AIAssistantPage({ token }: Props) {
   }, [token]);
 
   async function submit(message?: string, toolName = selectedTool) {
-    const text = (message ?? query).trim();
+    const selected = tools.find((tool) => tool.name === toolName);
+    const text = (message ?? query).trim() || (toolName === "global_search" ? "" : selected?.purpose ?? "");
     if (!text) {
-      setError(toolName === "global_search" ? "Enter a record name or keyword to search." : "Enter a request.");
+      setError("Enter a record name or keyword to search.");
       return;
     }
     setLoading(true);
@@ -47,7 +48,9 @@ export default function AIAssistantPage({ token }: Props) {
     try {
       const input: Record<string, unknown> = toolName === "global_search"
         ? { query: text, ...(entityType ? { entity_types: [entityType] } : {}) }
-        : (query.trim() ? { status: query.trim() } : {});
+        : toolName === "get_tasks" && query.trim()
+          ? { status: query.trim() }
+          : {};
       const result = await runAIAssistantRead(token, {
         message: text,
         tool_name: toolName,
@@ -108,11 +111,16 @@ export default function AIAssistantPage({ token }: Props) {
                 <button className="primary-button" type="button" disabled={loading} onClick={() => void submit()}>{loading ? "Searching…" : "Search OS"}</button>
               </div>
             </div>
+          ) : selectedTool === "get_tasks" ? (
+            <div className="ai-assistant-composer">
+              <label htmlFor="ai-query">Optional task status filter</label>
+              <input id="ai-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. in_progress, blocked, ready" />
+              <button className="primary-button" type="button" disabled={loading} onClick={() => void submit("Show my permitted tasks.")}>{loading ? "Loading…" : "Retrieve tasks"}</button>
+            </div>
           ) : (
             <div className="ai-assistant-composer">
-              <label htmlFor="ai-query">Task filter</label>
-              <input id="ai-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Optional status filter: in_progress, blocked…" />
-              <button className="primary-button" type="button" disabled={loading} onClick={() => void submit(query.trim() || "Show my permitted tasks.")}>{loading ? "Loading…" : "Retrieve tasks"}</button>
+              <p className="ai-muted">This capability retrieves information using your existing OS permissions.</p>
+              <button className="primary-button" type="button" disabled={loading} onClick={() => void submit(tools.find((tool) => tool.name === selectedTool)?.purpose ?? "Run this read query.")}>{loading ? "Loading…" : "Run query"}</button>
             </div>
           )}
 
