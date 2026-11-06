@@ -7,7 +7,15 @@ from fastapi import HTTPException
 
 from app.ai_assistant import router as ai_router
 from app.ai_assistant.contracts import AIResponseType
-from app.ai_assistant.router import AIReadInvocation, execute_ai_read, list_ai_read_tools
+from app.ai_assistant.router import (
+    AIReadInvocation,
+    AIWriteConfirmation,
+    AIWriteInvocation,
+    confirm_ai_write,
+    execute_ai_read,
+    list_ai_read_tools,
+    preview_ai_write,
+)
 from app.tasks.schemas import TaskResponse
 
 
@@ -17,6 +25,9 @@ class FakeDB:
 
     def commit(self):
         self.commits += 1
+
+    def rollback(self):
+        pass
 
 
 def user_with_permissions(*codes):
@@ -191,3 +202,109 @@ def test_provider_unavailable_is_reported_without_claiming_ai_inference():
 
     assert result["provider_connected"] is False
     assert {tool["name"] for tool in result["tools"]} == {"get_tasks", "global_search"}
+
+
+def test_write_preview_requires_permission_and_returns_confirmation_preview():
+    user = user_with_permissions("tasks.create")
+    result = preview_ai_write(
+        AIWriteInvocation(
+            message="Create a task to prepare the client proposal",
+            tool_name="create_task",
+            input={"title": "Prepare client proposal", "priority": "high"},
+        ),
+        current_user=user,
+    )
+
+    assert result.response_type is AIResponseType.ACTION_PREVIEW
+    assert result.confirmation_required is True
+    assert result.data["action"] == "Create task"
+    assert result.data["task"]["title"] == "Prepare client proposal"
+    assert result.data["preview_id"]
+
+
+def test_write_preview_rejects_unknown_task_fields():
+    user = user_with_permissions("tasks.create")
+
+    with pytest.raises(HTTPException) as exc:
+        preview_ai_write(
+            AIWriteInvocation(
+                message="Create task",
+                tool_name="create_task",
+                input={"title": "Prepare proposal", "is_admin": True},
+            ),
+            current_user=user,
+        )
+
+    assert exc.value.status_code == 422
+
+
+def test_confirmed_task_write_uses_business_rules_and_audited_executor(monkeypatch):
+    user = user_with_permissions("tasks.create", "rules_engine.evaluate")
+    user.roles[0].name = "Founder"
+    db = FakeDB()
+    task = fake_task(user.company_id)
+    task = task.model_copy(update={"title": "Prepare client proposal"})
+    captured = {}
+
+    class FakeExecutor:
+        def __init__(self, session, *, failure_audit_session_factory):
+            self.last_audit_reference = "audit-task-create"
+
+        def execute(self, event, handler, **kwargs):
+            captured["event"] = event
+            result = handler(**kwargs)
+            captured["result"] = result
+            return result
+
+    monkeypatch.setattr(ai_router, "evaluate_rules", lambda *args, **kwargs: SimpleNamespace(allowed=True, evaluations=[]))
+    monkeypatch.setattr(ai_router, "AIAuditedActionExecutor", FakeExecutor)
+    monkeypatch.setattr(ai_router, "create_task_record", lambda *args, **kwargs: task)
+
+    invocation = AIWriteInvocation(
+        message="Create a task to prepare the client proposal",
+        tool_name="create_task",
+        input={"title": "Prepare client proposal", "priority": "high"},
+    )
+    preview = preview_ai_write(invocation, current_user=user)
+    result = confirm_ai_write(
+        AIWriteConfirmation(
+            message=invocation.message,
+            tool_name=invocation.tool_name,
+            input=invocation.input,
+            preview_id=preview.data["preview_id"],
+        ),
+        current_user=user,
+        db=db,
+    )
+
+    assert result.response_type is AIResponseType.ACTION_RESULT
+    assert result.data["task"]["title"] == "Prepare client proposal"
+    assert result.records[0].entity_type == "task"
+    assert result.audit_reference == "audit-task-create"
+    assert captured["event"].confirmation_state == "confirmation_validated"
+    assert captured["event"].business_rule_decision == "allowed"
+    assert db.commits == 1
+
+
+def test_confirmed_task_write_rejects_payload_tampering():
+    user = user_with_permissions("tasks.create")
+    invocation = AIWriteInvocation(
+        message="Create a task",
+        tool_name="create_task",
+        input={"title": "Prepare proposal"},
+    )
+    preview = preview_ai_write(invocation, current_user=user)
+
+    with pytest.raises(HTTPException) as exc:
+        confirm_ai_write(
+            AIWriteConfirmation(
+                message=invocation.message,
+                tool_name=invocation.tool_name,
+                input={"title": "Delete all records"},
+                preview_id=preview.data["preview_id"],
+            ),
+            current_user=user,
+            db=FakeDB(),
+        )
+
+    assert exc.value.status_code == 409
