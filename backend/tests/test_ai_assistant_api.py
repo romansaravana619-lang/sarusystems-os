@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -342,9 +342,7 @@ def test_schedule_followup_preview_returns_linked_calendar_event():
     user = user_with_permissions("calendar.events.create", "rules_engine.evaluate")
     target_id = uuid4()
     start = datetime.now(timezone.utc).replace(microsecond=0)
-    end = start.replace(minute=(start.minute + 30) % 60)
-    if end <= start:
-        end = start.replace(hour=(start.hour + 1) % 24)
+    end = start + timedelta(minutes=30)
     invocation = AIWriteInvocation(
         message="Schedule a follow-up with the prospect",
         tool_name="schedule_followup",
@@ -370,9 +368,7 @@ def test_confirmed_schedule_followup_uses_calendar_domain_service(monkeypatch):
     db = FakeDB()
     target_id = uuid4()
     start = datetime.now(timezone.utc).replace(microsecond=0)
-    end = start.replace(hour=(start.hour + 1) % 24)
-    if end <= start:
-        end = start.replace(day=start.day + 1)
+    end = start + timedelta(minutes=30)
     event_id = uuid4()
     captured = {}
     event = CalendarEventResponse(
