@@ -32,7 +32,7 @@ class AIResponseContract:
             intent=intent,
             response_type=AIResponseType.ANSWER,
             summary=summary,
-            data=data or {},
+            data=data if data is not None else {},
             records=list(records),
             recommendations=list(recommendations),
             actions_available=list(actions_available),
@@ -56,7 +56,7 @@ class AIResponseContract:
             intent=intent,
             response_type=AIResponseType.CLARIFICATION,
             summary=summary,
-            data=data or {},
+            data=data if data is not None else {},
             actions_available=list(actions_available),
             warnings=list(warnings),
         )
@@ -77,7 +77,7 @@ class AIResponseContract:
             intent=intent,
             response_type=AIResponseType.ACTION_PREVIEW,
             summary=summary,
-            data=data or {},
+            data=data if data is not None else {},
             actions_available=list(actions_available),
             confirmation_required=True,
             warnings=list(warnings),
@@ -101,7 +101,7 @@ class AIResponseContract:
             intent=intent,
             response_type=AIResponseType.ACTION_RESULT,
             summary=summary,
-            data=data or {},
+            data=data if data is not None else {},
             records=list(records),
             actions_available=list(actions_available),
             warnings=list(warnings),
@@ -125,7 +125,7 @@ class AIResponseContract:
             intent=intent,
             response_type=AIResponseType.BLOCKED,
             summary=summary,
-            data=data or {},
+            data=data if data is not None else {},
             actions_available=list(actions_available),
             warnings=list(warnings),
             error_code=error_code,
@@ -139,6 +139,7 @@ class AIResponseContract:
         *,
         intent: str | None = None,
         error_code: str,
+        data: dict[str, Any] | None = None,
         warnings: Iterable[str] = (),
         audit_reference: str | None = None,
     ) -> AIResponse:
@@ -147,6 +148,7 @@ class AIResponseContract:
             intent=intent,
             response_type=AIResponseType.ERROR,
             summary=summary,
+            data=data if data is not None else {},
             warnings=list(warnings),
             error_code=error_code,
             audit_reference=audit_reference,
@@ -155,4 +157,4 @@ class AIResponseContract:
 
 def validate_response(response: AIResponse) -> AIResponse:
     """Re-validate a response at the application boundary."""
-    return AIResponse.model_validate(response.model_dump())
+    return AIResponse.model_validate(response.model_dump(mode="python"))
