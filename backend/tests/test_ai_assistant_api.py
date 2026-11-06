@@ -155,3 +155,39 @@ def test_read_input_rejects_unknown_fields_before_tool_execution(monkeypatch):
         )
 
     assert exc.value.status_code == 422
+
+
+def test_tool_list_uses_exact_domain_api_permission_not_generic_registry_permission():
+    generic_only = user_with_permissions("crm.view")
+    exact_domain = user_with_permissions("crm.followups.view")
+
+    generic_tools = list_ai_read_tools(current_user=generic_only)["tools"]
+    domain_tools = list_ai_read_tools(current_user=exact_domain)["tools"]
+
+    assert "get_followups" not in {tool["name"] for tool in generic_tools}
+    assert "get_followups" in {tool["name"] for tool in domain_tools}
+
+
+def test_task_filter_rejects_non_text_status():
+    user = user_with_permissions("tasks.view")
+
+    with pytest.raises(HTTPException) as exc:
+        execute_ai_read(
+            AIReadInvocation(
+                message="Show tasks",
+                tool_name="get_tasks",
+                input={"status": 123},
+            ),
+            current_user=user,
+            db=FakeDB(),
+        )
+
+    assert exc.value.status_code == 422
+
+
+def test_provider_unavailable_is_reported_without_claiming_ai_inference():
+    user = user_with_permissions("tasks.view", "global_search.view")
+    result = list_ai_read_tools(current_user=user)
+
+    assert result["provider_connected"] is False
+    assert {tool["name"] for tool in result["tools"]} == {"get_tasks", "global_search"}
