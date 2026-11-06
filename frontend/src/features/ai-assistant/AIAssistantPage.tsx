@@ -26,8 +26,8 @@ export default function AIAssistantPage({ token }: Props) {
       .then((result) => {
         if (!active) return;
         setTools(result.tools);
-        if (!result.tools.some((tool) => tool.name === selectedTool) && result.tools[0]) {
-          setSelectedTool(result.tools[0].name);
+        if (result.tools.length) {
+          setSelectedTool((current) => result.tools.some((tool) => tool.name === current) ? current : result.tools[0].name);
         }
       })
       .catch((err: Error) => { if (active) setError(err.message); })
@@ -47,7 +47,7 @@ export default function AIAssistantPage({ token }: Props) {
     try {
       const input: Record<string, unknown> = toolName === "global_search"
         ? { query: text, ...(entityType ? { entity_types: [entityType] } : {}) }
-        : {};
+        : (query.trim() ? { status: query.trim() } : {});
       const result = await runAIAssistantRead(token, {
         message: text,
         tool_name: toolName,
