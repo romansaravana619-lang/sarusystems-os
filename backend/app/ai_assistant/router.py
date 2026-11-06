@@ -38,6 +38,24 @@ from .registry import get_default_ai_tool_registry
 
 router = APIRouter(prefix="/ai-assistant", tags=["AI Assistant"])
 
+DOMAIN_PERMISSIONS = {
+    "get_today_attention": "command_center.view",
+    "get_tasks": "tasks.view",
+    "get_followups": "crm.followups.view",
+    "get_sales_pipeline": "sales.pipeline.view",
+    "get_prospect_followups": "crm.pipeline.view",
+    "get_opportunities": "crm.opportunities.view",
+    "get_projects": "projects.view",
+    "get_unpaid_payments": "finance.milestones.view",
+    "get_financial_summary": "finance.dashboard.view",
+    "get_freelancer_workload": "freelancers.view",
+    "get_calendar_events": "calendar.events.view",
+    "get_notifications": "notifications.view",
+    "get_communication_history": "communication.activities.view",
+    "get_analytics_summary": "analytics.dashboard.view",
+    "global_search": "global_search.view",
+}
+
 READ_HANDLERS = frozenset({
     "get_today_attention", "get_tasks", "get_followups", "get_sales_pipeline",
     "get_prospect_followups", "get_opportunities", "get_projects",
@@ -99,8 +117,9 @@ def _validate_read_input(tool_name: str, payload: dict[str, Any]) -> None:
 def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, db: Session):
     registry = get_default_ai_tool_registry()
     tool = registry.require(tool_name)
-    if tool.required_permission:
-        require_permission(tool.required_permission)(current_user)
+    permission = DOMAIN_PERMISSIONS.get(tool_name, tool.required_permission)
+    if permission:
+        require_permission(permission)(current_user)
 
     if tool_name == "global_search":
         result = global_search(
@@ -137,8 +156,8 @@ def _read_handler(tool_name: str, payload: dict[str, Any], current_user: User, d
     if tool_name == "get_projects":
         return [item.model_dump(mode="json") for item in list_projects(current_user=current_user, db=db)]
     if tool_name == "get_unpaid_payments":
-        milestones = list_milestones(status_filter="unpaid", current_user=current_user, db=db)
-        return [item.model_dump(mode="json") for item in milestones]
+        milestones = list_milestones(current_user=current_user, db=db)
+        return [item.model_dump(mode="json") for item in milestones if item.status != "paid"]
     if tool_name == "get_financial_summary":
         return finance_dashboard(current_user=current_user, db=db).model_dump(mode="json")
     if tool_name == "get_freelancer_workload":
@@ -163,7 +182,9 @@ def list_ai_read_tools(current_user: User = Depends(get_current_user)) -> dict[s
         if tool.name not in READ_HANDLERS:
             continue
         decision = policy.authorize_user(tool, current_user)
-        if decision.allowed:
+        required_permission = DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission)
+        has_domain_permission = required_permission is None or required_permission in policy.permission_codes_from_user(current_user)
+        if decision.allowed and has_domain_permission:
             available.append({
                 "name": tool.name,
                 "purpose": tool.purpose,
@@ -187,7 +208,8 @@ def execute_ai_read(
         raise HTTPException(status_code=501, detail="This registered AI read capability is not connected to an OS API yet.")
 
     decision = AIToolRBACPolicy().authorize_user(tool, current_user)
-    if not decision.allowed:
+    required_permission = DOMAIN_PERMISSIONS.get(tool.name, tool.required_permission)
+    if not decision.allowed or (required_permission is not None and required_permission not in AIToolRBACPolicy.permission_codes_from_user(current_user)):
         return AIResponse(
             request_id=request.request_id,
             intent=tool.name,
