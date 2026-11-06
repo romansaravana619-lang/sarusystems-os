@@ -442,7 +442,7 @@ def preview_ai_write(
     tool = WRITE_REGISTRY.get(invocation.tool_name)
     if tool is None or tool.action_kind != AIActionKind.WRITE:
         raise HTTPException(status_code=404, detail="Registered write capability not found.")
-    if tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder"}:
+    if tool.name not in {"create_task", "create_followup", "schedule_followup", "create_founder_reminder", "record_activity", "create_notification", "update_task"}:
         raise HTTPException(status_code=501, detail="This write capability is not enabled for execution yet.")
 
     effective_tool = replace(
