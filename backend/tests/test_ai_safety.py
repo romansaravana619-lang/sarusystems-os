@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import math
@@ -200,3 +201,32 @@ def test_payload_hash_is_independent_of_object_key_order() -> None:
     assert canonical_payload_hash({"title": "Follow up", "priority": "high"}) == canonical_payload_hash(
         {"priority": "high", "title": "Follow up"}
     )
+
+
+def test_confirmation_consumption_is_atomic_across_threads() -> None:
+    policy = AISafetyPolicy(get_default_ai_tool_registry())
+    request = make_request()
+    payload = {"title": "Follow up"}
+    preview = policy.preview_write(request, "create_task", payload)
+    ticket = policy.issue_confirmation(preview)
+
+    def consume_confirmation(_: int) -> bool:
+        return policy.confirm_write(
+            request,
+            "create_task",
+            payload,
+            ticket.confirmation_id,
+        ).allowed
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        results = list(executor.map(consume_confirmation, range(12)))
+
+    assert sum(results) == 1
+
+
+def test_payload_hash_rejects_circular_references() -> None:
+    payload = {}
+    payload["self"] = payload
+
+    with pytest.raises(ValueError, match="circular reference"):
+        canonical_payload_hash(payload)
