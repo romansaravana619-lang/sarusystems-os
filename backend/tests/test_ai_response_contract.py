@@ -116,34 +116,23 @@ def test_response_contract_rejects_blank_summary_and_list_entries() -> None:
 
 
 def test_response_type_invariants_are_enforced_at_model_boundary() -> None:
-    request_id = uuid4()
+    from app.ai_assistant.contracts import AIResponse
 
     with pytest.raises(ValidationError, match="must require confirmation"):
-        AIResponseContract.answer(request_id, "This is not a preview").model_copy(
-            update={
-                "response_type": AIResponseType.ACTION_PREVIEW,
-                "confirmation_required": False,
-            }
+        AIResponse(
+            request_id=uuid4(),
+            intent="create_task",
+            response_type=AIResponseType.ACTION_PREVIEW,
+            summary="Review before action",
+            confirmation_required=False,
         )
-        # model_copy does not validate updates; explicit model validation is covered below.
 
-    with pytest.raises(ValidationError, match="must require confirmation"):
-        validate_response(
-            AIResponseContract.answer(request_id, "A normal answer").model_construct(
-                request_id=request_id,
-                intent="create_task",
-                response_type=AIResponseType.ACTION_PREVIEW,
-                summary="Preview",
-                data={},
-                records=[],
-                recommendations=[],
-                actions_available=[],
-                confirmation_required=False,
-                confidence=None,
-                warnings=[],
-                error_code=None,
-                audit_reference=None,
-            )
+    with pytest.raises(ValidationError, match="only action preview"):
+        AIResponse(
+            request_id=uuid4(),
+            response_type=AIResponseType.ANSWER,
+            summary="Answer",
+            confirmation_required=True,
         )
 
 
