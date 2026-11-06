@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from uuid import uuid4
 
 import pytest
@@ -41,7 +42,7 @@ def build_registry() -> AIToolRegistry:
     return AIToolRegistry((tool,))
 
 
-def build_context(request: AIRequest, *, confirmation_state: str = "confirmed") -> AIAuditEvent:
+def build_context(request: AIRequest, payload: dict, *, confirmation_state: str = "confirmed") -> AIAuditEvent:
     return AIAuditEvent(
         user_id=uuid4(),
         company_id=uuid4(),
@@ -50,6 +51,7 @@ def build_context(request: AIRequest, *, confirmation_state: str = "confirmed") 
         normalized_intent="create_task",
         tool_name="create_task",
         action_metadata={"title": "Prepare proposal"},
+        action_payload_hash=__import__("app.ai_assistant.safety", fromlist=["canonical_payload_hash"]).canonical_payload_hash(payload),
         permission_decision="allowed",
         business_rule_decision="allowed",
         confirmation_state=confirmation_state,
@@ -83,7 +85,7 @@ def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> N
         "create_task",
         payload,
         safety_decision=confirmed_decision(registry, request, payload),
-        audit_event=build_context(request),
+        audit_event=build_context(request, payload),
         handler=handler,
     )
 
@@ -166,7 +168,7 @@ def test_write_is_not_executed_when_audit_context_does_not_match_request() -> No
     session = FakeSession()
     orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
     called = False
-    mismatched = build_context(AIRequest(message="Different request"))
+    mismatched = build_context(AIRequest(message="Different request"), payload)
 
     def handler(**kwargs):
         nonlocal called
@@ -193,8 +195,6 @@ def test_read_only_event_cannot_be_used_for_write_execution() -> None:
     session = FakeSession()
     orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
     read_event = build_context(request)
-    from dataclasses import replace
-
     with pytest.raises(PermissionError, match="audit context"):
         orchestrator.execute_write(
             request,
