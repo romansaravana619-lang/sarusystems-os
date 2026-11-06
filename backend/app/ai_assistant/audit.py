@@ -33,6 +33,7 @@ class AIAuditEvent:
     target_entity_type: str | None = None
     target_entity_id: UUID | None = None
     action_metadata: dict[str, Any] = field(default_factory=dict)
+    action_payload_hash: str | None = None
     permission_decision: str | None = None
     business_rule_decision: str | None = None
     confirmation_state: str | None = None
@@ -55,6 +56,7 @@ class AIAuditEvent:
             "target_entity_type": self.target_entity_type,
             "target_entity_id": str(self.target_entity_id) if self.target_entity_id else None,
             "action_metadata": self.action_metadata,
+            "action_payload_hash": self.action_payload_hash,
             "permission_decision": self.permission_decision,
             "business_rule_decision": self.business_rule_decision,
             "confirmation_state": self.confirmation_state,
