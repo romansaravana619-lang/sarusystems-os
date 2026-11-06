@@ -629,7 +629,7 @@ def confirm_ai_write(
             handler=create_task_handler,
         )
         db.commit()
-    except Exception:  # noqa: BLE001 - return a safe failure without leaking internal details
+    except Exception as exc:  # noqa: BLE001 - return a safe failure without leaking internal details
         db.rollback()
         with PENDING_WRITE_LOCK:
             PENDING_WRITE_PREVIEWS.pop(confirmation.preview_id, None)
