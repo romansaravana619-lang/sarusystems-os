@@ -485,8 +485,13 @@ def preview_ai_write(
             preview_payload = NotificationCreate.model_validate(notification_payload).model_dump(mode="json")
             action_label = "Create in-app notification"
         elif tool.name == "update_task":
-            update_payload = {invocation.input["field"]: invocation.input["value"]}
-            preview_payload = {"task_id": invocation.input["task_id"], **update_payload}
+            task_id = UUID(invocation.input["task_id"])
+            update_payload = TaskUpdate.model_validate(
+                {invocation.input["field"]: invocation.input["value"]}
+            ).model_dump(exclude_unset=True, mode="json")
+            if not update_payload:
+                raise ValueError("No task field was supplied")
+            preview_payload = {"task_id": str(task_id), **update_payload}
             action_label = "Update task"
         elif tool.name == "record_activity":
             action_payload = _activity_payload(confirmation.input, current_user)
