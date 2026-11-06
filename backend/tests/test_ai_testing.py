@@ -121,7 +121,9 @@ def test_business_scenario_permission_denial_blocks_the_operation():
     assert response.response_type is AIResponseType.BLOCKED
     assert response.error_code == "permission_denied"
     assert response.actions_available == []
-    assert response.data["required_permission"] == "clients.write"
+    assert response.summary == "This information or action is not available to your current account."
+    assert "required_permission" not in response.data
+    assert "clients.write" not in response.model_dump_json()
 
 
 def test_business_scenario_business_rule_block_stays_blocked():
