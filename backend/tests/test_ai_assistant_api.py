@@ -424,3 +424,70 @@ def test_calendar_write_preview_rejects_invalid_event_window():
     with pytest.raises(HTTPException) as exc:
         preview_ai_write(invocation, current_user=user)
     assert exc.value.status_code == 422
+
+
+
+def test_activity_write_preview_accepts_linked_activity_target():
+    user = user_with_permissions("communication.activities.create")
+    target_id = uuid4()
+    result = preview_ai_write(
+        AIWriteInvocation(
+            message="Record a client note",
+            tool_name="record_activity",
+            input={
+                "activity_type": "client_note",
+                "summary": "Discussed the website requirements.",
+                "target_type": "client",
+                "target_id": str(target_id),
+            },
+        ),
+        current_user=user,
+    )
+    assert result.response_type is AIResponseType.ACTION_PREVIEW
+    assert result.data["activity"]["client_id"] == str(target_id)
+    assert result.confirmation_required is True
+
+
+def test_notification_write_preview_requires_a_valid_recipient():
+    user = user_with_permissions("notifications.create")
+    recipient_id = uuid4()
+    result = preview_ai_write(
+        AIWriteInvocation(
+            message="Notify the team",
+            tool_name="create_notification",
+            input={"title": "Project update", "recipient_id": str(recipient_id), "body": "Review the latest update."},
+        ),
+        current_user=user,
+    )
+    assert result.response_type is AIResponseType.ACTION_PREVIEW
+    assert result.data["notification"]["recipient_user_id"] == str(recipient_id)
+    assert result.confirmation_required is True
+
+
+def test_task_update_preview_rejects_disallowed_fields():
+    user = user_with_permissions("tasks.edit")
+    with pytest.raises(HTTPException) as exc:
+        preview_ai_write(
+            AIWriteInvocation(
+                message="Change task permissions",
+                tool_name="update_task",
+                input={"task_id": str(uuid4()), "field": "company_id", "value": str(uuid4())},
+            ),
+            current_user=user,
+        )
+    assert exc.value.status_code == 422
+
+
+def test_task_update_preview_accepts_allowlisted_field():
+    user = user_with_permissions("tasks.edit")
+    result = preview_ai_write(
+        AIWriteInvocation(
+            message="Update task notes",
+            tool_name="update_task",
+            input={"task_id": str(uuid4()), "field": "notes", "value": "Waiting for client feedback."},
+        ),
+        current_user=user,
+    )
+    assert result.response_type is AIResponseType.ACTION_PREVIEW
+    assert result.data["task_update"]["field"] == "notes"
+    assert result.confirmation_required is True
