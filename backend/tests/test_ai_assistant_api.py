@@ -69,6 +69,8 @@ def test_ai_assistant_read_routes_are_registered():
     paths = {(route.path, tuple(route.methods or ())) for route in ai_router.router.routes}
     assert ("/ai-assistant/tools", ("GET",)) in paths
     assert ("/ai-assistant/read", ("POST",)) in paths
+    assert ("/ai-assistant/write/preview", ("POST",)) in paths
+    assert ("/ai-assistant/write/confirm", ("POST",)) in paths
 
 
 def test_capability_list_is_filtered_by_authenticated_permissions():
