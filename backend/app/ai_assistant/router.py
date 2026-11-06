@@ -416,7 +416,7 @@ def preview_ai_write(
     tool = WRITE_REGISTRY.get(invocation.tool_name)
     if tool is None or tool.action_kind != AIActionKind.WRITE:
         raise HTTPException(status_code=404, detail="Registered write capability not found.")
-    if tool.name != "create_task":
+    if tool.name not in {"create_task", "create_followup"}:
         raise HTTPException(status_code=501, detail="This write capability is not enabled for execution yet.")
 
     effective_tool = replace(
@@ -482,8 +482,9 @@ def preview_ai_write(
             "preview_id": str(preview.preview_id),
             "action": action_label,
             "payload": preview_payload,
+            **({"task": preview_payload} if tool.name == "create_task" else {"followup": preview_payload}),
         },
-        actions_available=["confirm_create_task"],
+        actions_available=[f"confirm_{tool.name}"],
         confirmation_required=True,
         warnings=list(preview.warnings),
     )
