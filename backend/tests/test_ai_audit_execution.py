@@ -52,7 +52,12 @@ def build_registry() -> AIToolRegistry:
     return AIToolRegistry((tool,))
 
 
-def build_context(request: AIRequest, payload: dict, *, confirmation_state: str = "confirmed") -> AIAuditEvent:
+def build_context(
+    request: AIRequest,
+    payload: dict,
+    *,
+    confirmation_state: str = "confirmed",
+) -> AIAuditEvent:
     return AIAuditEvent(
         user_id=uuid4(),
         company_id=uuid4(),
@@ -76,7 +81,6 @@ def confirmed_decision(registry, request, payload):
     return decision
 
 
-
 def approval_context(event: AIAuditEvent):
     authorization = AIAuthorizationDecision(
         allowed=True,
@@ -96,6 +100,7 @@ def approval_context(event: AIAuditEvent):
         evaluation_count=1,
     )
     return authorization, business_rules
+
 
 def test_orchestrator_executes_confirmed_write_and_persists_success_audit() -> None:
     registry = build_registry()
@@ -218,7 +223,7 @@ def test_write_is_not_executed_when_audit_context_does_not_match_request() -> No
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
-    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
+    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session, failure_audit_session_factory=FakeSession))
     called = False
     mismatched = build_context(AIRequest(message="Different request"), payload)
     authorization, business_rules = approval_context(mismatched)
@@ -248,7 +253,7 @@ def test_read_only_event_cannot_be_used_for_write_execution() -> None:
     request = AIRequest(message="Create a task named Prepare proposal")
     payload = {"title": "Prepare proposal"}
     session = FakeSession()
-    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session))
+    orchestrator = AIOrchestrator(registry, action_executor=AIAuditedActionExecutor(session, failure_audit_session_factory=FakeSession))
     read_event = build_context(request, payload)
     authorization, business_rules = approval_context(read_event)
     with pytest.raises(PermissionError, match="audit context"):
