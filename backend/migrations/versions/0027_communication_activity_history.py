@@ -1,12 +1,12 @@
 """Communication & Activity History.
 
-Revision ID: 0027_communication_activity_history
+Revision ID: 0027_communication_history
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0027_communication_activity_history"
+revision = "0027_communication_history"
 down_revision = "0026_finance_payments"
 branch_labels = None
 depends_on = None
