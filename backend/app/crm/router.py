@@ -139,13 +139,34 @@ def create_communication(payload: CommunicationCreate, current_user: User = Depe
     db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="crm.communication.create", entity_type="CommunicationActivity", entity_id=str(activity.id))); db.commit(); db.refresh(activity); return activity
 @router.get("/follow-ups", response_model=list[FollowUpResponse])
 def list_follow_ups(current_user: User = Depends(require_permission("crm.followups.view")), db: Session = Depends(get_db)) -> list[CRMFollowUp]: return list(db.scalars(select(CRMFollowUp).where(CRMFollowUp.company_id == current_user.company_id).order_by(CRMFollowUp.due_at)).all())
+def create_follow_up_record(
+    payload: FollowUpCreate,
+    current_user: User,
+    db: Session,
+    *,
+    commit: bool = True,
+) -> CRMFollowUp:
+    """Create a CRM follow-up through the validated domain workflow."""
+    _validate_record_link(db, current_user.company_id, payload.prospect_id, payload.contact_id)
+    _validate_owner(db, current_user.company_id, payload.owner_user_id)
+    follow_up = CRMFollowUp(company_id=current_user.company_id, **payload.model_dump())
+    db.add(follow_up)
+    if payload.prospect_id:
+        prospect = db.get(Prospect, payload.prospect_id)
+        prospect.next_action = payload.title
+        prospect.next_action_at = payload.due_at
+        prospect.follow_up_count += 1
+    db.flush()
+    db.add(AuditLog(actor_user_id=current_user.id, action="crm.followup.create", entity_type="CRMFollowUp", entity_id=str(follow_up.id)))
+    if commit:
+        db.commit()
+        db.refresh(follow_up)
+    return follow_up
+
+
 @router.post("/follow-ups", response_model=FollowUpResponse, status_code=status.HTTP_201_CREATED)
 def create_follow_up(payload: FollowUpCreate, current_user: User = Depends(require_permission("crm.followups.create")), db: Session = Depends(get_db)) -> CRMFollowUp:
-    _validate_record_link(db, current_user.company_id, payload.prospect_id, payload.contact_id); _validate_owner(db, current_user.company_id, payload.owner_user_id)
-    follow_up = CRMFollowUp(company_id=current_user.company_id, **payload.model_dump()); db.add(follow_up)
-    if payload.prospect_id:
-        prospect = db.get(Prospect, payload.prospect_id); prospect.next_action = payload.title; prospect.next_action_at = payload.due_at; prospect.follow_up_count += 1
-    db.flush(); db.add(AuditLog(actor_user_id=current_user.id, action="crm.followup.create", entity_type="CRMFollowUp", entity_id=str(follow_up.id))); db.commit(); db.refresh(follow_up); return follow_up
+    return create_follow_up_record(payload, current_user, db)
 @router.patch("/follow-ups/{follow_up_id}", response_model=FollowUpResponse)
 def update_follow_up(follow_up_id: UUID, payload: FollowUpUpdate, current_user: User = Depends(require_permission("crm.followups.edit")), db: Session = Depends(get_db)) -> CRMFollowUp:
     follow_up = db.get(CRMFollowUp, follow_up_id)

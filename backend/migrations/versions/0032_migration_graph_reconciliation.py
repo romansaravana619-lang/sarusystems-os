@@ -1,10 +1,10 @@
 """Reconcile all remaining Alembic migration heads into one linear tip.
 
-Revision ID: 0032_migration_graph_reconciliation
+Revision ID: 0032_migration_reconcile
 Revises: 0031_global_search, 0012_sales_commercial, 0014_task_milestone_deliverable_control, 0016_freelancer_constraints
 """
 
-revision = "0032_migration_graph_reconciliation"
+revision = "0032_migration_reconcile"
 down_revision = (
     "0031_global_search",
     "0012_sales_commercial",

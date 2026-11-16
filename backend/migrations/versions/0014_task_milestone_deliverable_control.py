@@ -1,13 +1,13 @@
 """Add approved task/milestone/deliverable control fields.
 
-Revision ID: 0014_task_milestone_deliverable_control
+Revision ID: 0014_task_milestone_control
 Revises: 0013_task_management_reconciliation
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0014_task_milestone_deliverable_control"
+revision = "0014_task_milestone_control"
 down_revision = "0013_task_management_reconciliation"
 branch_labels = None
 depends_on = None

@@ -221,8 +221,18 @@ def task_workspace(current_user: User = Depends(require_permission("tasks.view")
     )
 
 
-@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(payload: TaskCreate, current_user: User = Depends(require_permission("tasks.create")), db: Session = Depends(get_db)) -> Task:
+def create_task_record(
+    payload: TaskCreate,
+    current_user: User,
+    db: Session,
+    *,
+    commit: bool = True,
+) -> Task:
+    """Create a task through the same validated domain service used by the API.
+
+    Internal callers may keep the transaction open so an enclosing audited
+    operation can commit the task and its audit evidence atomically.
+    """
     if payload.status not in TASK_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid task status.")
     if payload.priority not in TASK_PRIORITIES:
@@ -241,13 +251,18 @@ def create_task(payload: TaskCreate, current_user: User = Depends(require_permis
         _validate_completion(db, task)
         task.completed_at = datetime.now(timezone.utc)
     _audit(db, current_user, "task.create", "Task", task.id, f"Created task {task.title}")
-    db.commit()
-    db.refresh(task)
+    if commit:
+        db.commit()
+        db.refresh(task)
     return task
 
 
-@router.patch("/{task_id}", response_model=TaskResponse)
-def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends(require_permission("tasks.edit")), db: Session = Depends(get_db)) -> Task:
+@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+def create_task(payload: TaskCreate, current_user: User = Depends(require_permission("tasks.create")), db: Session = Depends(get_db)) -> Task:
+    return create_task_record(payload, current_user, db)
+
+
+def update_task_record(task_id: UUID, payload: TaskUpdate, current_user: User, db: Session, *, commit: bool = True) -> Task:
     task = _task(db, current_user.company_id, task_id)
     values = payload.model_dump(exclude_unset=True)
     target_status = values.get("status", task.status)
@@ -281,9 +296,15 @@ def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends
     elif "status" in values:
         task.completed_at = None
     _audit(db, current_user, "task.update", "Task", task.id, "Updated task fields or lifecycle status")
-    db.commit()
-    db.refresh(task)
+    if commit:
+        db.commit()
+        db.refresh(task)
     return task
+
+
+@router.patch("/{task_id}", response_model=TaskResponse)
+def update_task(task_id: UUID, payload: TaskUpdate, current_user: User = Depends(require_permission("tasks.edit")), db: Session = Depends(get_db)) -> Task:
+    return update_task_record(task_id, payload, current_user, db)
 
 
 @router.post("/{task_id}/submit", response_model=TaskResponse)

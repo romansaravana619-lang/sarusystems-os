@@ -1,13 +1,13 @@
 """Reconcile task management with the approved V1 workflow.
 
-Revision ID: 0013_task_management_reconciliation
+Revision ID: 0013_task_reconcile
 Revises: 0012_project_management
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0013_task_management_reconciliation"
+revision = "0013_task_reconcile"
 down_revision = "0012_project_management"
 branch_labels = None
 depends_on = None

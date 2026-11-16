@@ -12,7 +12,7 @@ def test_read_tools_auto_execute_without_confirmation() -> None:
 
 def test_write_tools_require_confirmation() -> None:
     policy = AIReadWritePolicy(get_default_ai_tool_registry())
-    payload = {"title": "Follow up", "due_date": "2026-10-28"}
+    payload = {"title": "Follow up", "due_at": "2026-10-28T12:00:00+00:00"}
     decision = ensure_write_action(policy, "create_task", payload, confirmation_granted=False)
     assert decision.allowed is False
     assert decision.confirmation_required is True

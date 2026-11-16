@@ -77,6 +77,22 @@ def _audit(db: Session, actor: User, action: str, obj: ActivityRecord) -> None:
     db.add(AuditLog(actor_user_id=actor.id, action=action, entity_type="ActivityRecord", entity_id=str(obj.id), details=obj.activity_type))
 
 
+def create_activity_record(payload: ActivityCreate, current_user: User, db: Session, *, commit: bool = True) -> ActivityRecord:
+    """Create a company-scoped activity and audit it; callers may own the transaction."""
+    values = payload.model_dump()
+    values["actor_user_id"] = values.get("actor_user_id") or current_user.id
+    _validate_links(db, current_user.company_id, values)
+    _validate_entity(db, current_user.company_id, values.get("entity_type"), values.get("entity_id"))
+    obj = ActivityRecord(company_id=current_user.company_id, **values)
+    db.add(obj)
+    db.flush()
+    _audit(db, current_user, "communication.activity.create", obj)
+    if commit:
+        db.commit()
+        db.refresh(obj)
+    return obj
+
+
 @router.get("/dashboard", response_model=ActivityDashboard)
 def dashboard(current_user: User = Depends(require_permission("communication.dashboard.view")), db: Session = Depends(get_db)):
     base = ActivityRecord.company_id == current_user.company_id
@@ -122,13 +138,7 @@ def entity_history(entity_type: str, entity_id: str, limit: int = Query(default=
 
 @router.post("/activities", response_model=ActivityResponse, status_code=status.HTTP_201_CREATED)
 def create_activity(payload: ActivityCreate, current_user: User = Depends(require_permission("communication.activities.create")), db: Session = Depends(get_db)):
-    values = payload.model_dump()
-    values["actor_user_id"] = values.get("actor_user_id") or current_user.id
-    _validate_links(db, current_user.company_id, values)
-    _validate_entity(db, current_user.company_id, values.get("entity_type"), values.get("entity_id"))
-    obj = ActivityRecord(company_id=current_user.company_id, **values)
-    db.add(obj); db.flush(); _audit(db, current_user, "communication.activity.create", obj); db.commit(); db.refresh(obj)
-    return obj
+    return create_activity_record(payload, current_user, db)
 
 
 @router.patch("/activities/{activity_id}", response_model=ActivityResponse)

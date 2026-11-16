@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     secret_key: str = DEFAULT_DEVELOPMENT_SECRET
     access_token_expire_minutes: int = 30
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    ai_provider_base_url: str = ""
+    ai_provider_api_key: str = ""
+    ai_provider_model: str = ""
+    ai_provider_timeout_seconds: int = 30
 
     model_config = SettingsConfigDict(
         env_file=".env",
